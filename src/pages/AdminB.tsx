@@ -418,6 +418,7 @@ export function AdminConsultants() {
   const services = useAsync(() => listAllServicesAdmin(session), [session?.user_id]);
   const [edit, setEdit] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [created, setCreated] = useState<{ email: string; pw?: string } | null>(null);
   const [f, setF] = useState<Record<string, unknown>>({});
   const [svcRows, setSvcRows] = useState<{ service_id: string; price: number; duration_minutes: number; is_active: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
@@ -472,13 +473,14 @@ export function AdminConsultants() {
     if (!newC.display_name || !newC.email) { toast("Emri dhe email janë të detyrueshëm.", "bad"); return; }
     setBusy(true);
     try {
-      await saveConsultantAdmin(session, {
+      const res = await saveConsultantAdmin(session, {
         display_name: newC.display_name, professional_title: newC.professional_title,
         email: newC.email, commission_percentage: newC.commission_percentage,
         status: "active", is_active: true, bio: "", education: [], certifications: [],
         years_experience: 0, languages: ["sq"], specializations: [],
       } as never);
-      toast("Konsulenti u krijua me llogari hyrjeje (demo123).");
+      toast("Konsulenti u krijua me llogari hyrjeje të sigurt.");
+      setCreated({ email: newC.email, pw: res?.temp_password });
       setCreateOpen(false);
       setNewC({ display_name: "", professional_title: "", email: "", commission_percentage: 20 });
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusy(false); }
@@ -575,10 +577,24 @@ export function AdminConsultants() {
         <div className="space-y-4">
           <Field label="Emri i plotë" required><TextInput value={newC.display_name} onChange={(e) => setNewC({ ...newC, display_name: e.target.value })} /></Field>
           <Field label="Titulli profesional"><TextInput value={newC.professional_title} onChange={(e) => setNewC({ ...newC, professional_title: e.target.value })} /></Field>
-          <Field label="Email" required hint="Krijohet llogari me fjalëkalim demo123."><TextInput type="email" value={newC.email} onChange={(e) => setNewC({ ...newC, email: e.target.value })} /></Field>
+          <Field label="Email" required hint="Krijohet llogari me fjalëkalim të përkohshëm të gjeneruar nga serveri."><TextInput type="email" value={newC.email} onChange={(e) => setNewC({ ...newC, email: e.target.value })} /></Field>
           <Field label="Komisioni %"><TextInput type="number" value={newC.commission_percentage} onChange={(e) => setNewC({ ...newC, commission_percentage: +e.target.value })} /></Field>
           <Button className="w-full" loading={busy} onClick={create}>Krijo konsulentin</Button>
         </div>
+      </Modal>
+
+      <Modal open={!!created} onClose={() => setCreated(null)} title="Kredencialet u krijuan">
+        {created && (
+          <div className="space-y-3.5">
+            <p className="text-[13.5px] text-mute leading-relaxed">Llogaria e konsulentit u krijua (status <b className="text-ink">në pritje</b> — aktivizohet te direktoria pasi të plotësohen shërbimet). Jepjani këto kredenciale në mënyrë të sigurt:</p>
+            <div className="bg-paper border border-line rounded-xl p-4 font-mono text-[13px] space-y-1.5">
+              <p>Email: <b>{created.email}</b></p>
+              {created.pw && <p>Fjalëkalimi i përkohshëm: <b className="text-primary-700">{created.pw}</b></p>}
+            </div>
+            <p className="text-[11.5px] text-warn font-semibold bg-warn-soft rounded-lg px-3 py-2">Ky fjalëkalim shfaqet vetëm një herë — ruajeni tani.</p>
+            <Button className="w-full" onClick={() => setCreated(null)}>E kuptova</Button>
+          </div>
+        )}
       </Modal>
     </div>
   );

@@ -11,6 +11,8 @@ interface AppCtx {
   session: Session | null;
   user: User | null;
   authReady: boolean;
+  /** Re-fetches the profile from Supabase and refreshes the cached role. */
+  reloadSession: () => Promise<void>;
   lang: Lang;
   setLang: (l: Lang) => void;
   t: (key: string) => string;
@@ -48,6 +50,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("statlab_lang", l);
   }, []);
 
+  const reloadSession = useCallback(async () => {
+    try {
+      const s = await restoreSession();
+      setSessionState(s);
+    } catch (e) {
+      console.error("reloadSession failed:", e);
+    }
+  }, []);
+
   const t = useCallback((key: string) => translate(lang, key), [lang]);
 
   const dismissToast = useCallback((id: number) => setToasts((ts) => ts.filter((x) => x.id !== id)), []);
@@ -58,7 +69,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ session, user: session?.user ?? null, authReady, lang, setLang, t, tick, toast, toasts, dismissToast }}>
+    <Ctx.Provider value={{ session, user: session?.user ?? null, authReady, reloadSession, lang, setLang, t, tick, toast, toasts, dismissToast }}>
       {children}
     </Ctx.Provider>
   );

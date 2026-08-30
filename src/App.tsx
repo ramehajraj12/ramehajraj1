@@ -10,6 +10,7 @@ import Home from "./pages/Home";
 import { Directory, ConsultantProfile as PublicConsultantProfile, BecomeConsultant, LegalPage } from "./pages/Public";
 import Booking, { ManageBooking } from "./pages/Booking";
 import AuthPage from "./pages/Auth";
+import MyApplicationPage from "./pages/MyApplication";
 import {
   ClientShell, ClientDashboard, ClientAppointments, ClientProjects, ClientProjectDetail,
   ClientFiles, ClientPayments, ClientInvoices, ClientProfile,
@@ -72,6 +73,8 @@ export default function App() {
           <Route path="/rezervo" element={<Public><Booking /></Public>} />
           <Route path="/menaxho/:token" element={<Public><ManageBooking /></Public>} />
           <Route path="/auth" element={<AuthPage />} />
+          {/* applicant status — clients with a pending application AND approved consultants */}
+          <Route path="/aplikimi-im" element={<RequireRole roles={["client", "consultant"]}><MyApplicationPage /></RequireRole>} />
 
           {/* client portal */}
           <Route path="/client" element={<RequireRole roles={["client"]}><ClientShell><ClientDashboard /></ClientShell></RequireRole>} />

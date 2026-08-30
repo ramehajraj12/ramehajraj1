@@ -330,7 +330,7 @@ export function BecomeConsultant() {
           <Field label="Motivim i shkurtër" required><TextArea value={f.motivation} onChange={(e) => setF({ ...f, motivation: e.target.value })} placeholder="Pse dëshironi të bashkoheni me StatLab?" /></Field>
           {err && <p className="text-[13px] text-bad font-semibold bg-bad-soft rounded-lg px-3.5 py-2.5">{err}</p>}
           <Button type="submit" size="lg" loading={sending} className="w-full">Dërgo aplikimin</Button>
-          <p className="text-[12px] text-mute text-center">Aplikimet shqyrtohen manualisht nga ekipi. Aprovimi nuk jep akses automatik — llogaria krijohet me ftesë të sigurt.</p>
+          <p className="text-[12px] text-mute text-center">Aplikimet shqyrtohen manualisht nga ekipi. Pas aprovimit fitoni akses në Portalin e Konsulentit dhe bëheni të dukshëm në direktorinë publike.</p>
         </form>
       </div>
     </div>

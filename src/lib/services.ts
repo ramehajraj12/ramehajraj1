@@ -1078,7 +1078,7 @@ export async function saveConsultantAdmin(
     languages: string[]; specializations: string[]; status: string; commission_percentage: number;
     is_active: boolean; is_featured: boolean; email: string;
   }>,
-): Promise<void> {
+): Promise<{ temp_password?: string }> {
   requireAdmin(session);
   if (data.id) {
     const patch: Record<string, unknown> = {};
@@ -1089,21 +1089,23 @@ export async function saveConsultantAdmin(
     if (data.commission_percentage !== undefined)
       await sb.from("consultant_terms").upsert({ consultant_id: data.id, commission_percentage: data.commission_percentage });
     await rpc("log_activity", { p_action: "consultant.updated", p_entity_type: "consultant", p_entity_id: data.id, p_metadata: data.display_name ?? "" }).catch(() => undefined);
-  } else {
-    if (!data.email) throw new QueryError("Email-i është i detyrueshëm.");
-    const res = await rpc<{ consultant_id: string }>("admin_create_consultant", {
-      p_email: data.email.trim(), p_name: data.display_name ?? "Konsulent",
-      p_title: data.professional_title ?? "", p_commission: data.commission_percentage ?? 20,
-      p_specializations: data.specializations ?? [], p_languages: data.languages ?? ["sq"],
-    });
-    const extra: Record<string, unknown> = { status: data.status ?? "pending", is_active: data.is_active ?? false };
-    if (data.bio !== undefined) extra.bio = data.bio;
-    if (data.education) extra.education = data.education;
-    if (data.certifications) extra.certifications = data.certifications;
-    if (data.years_experience !== undefined) extra.years_experience = data.years_experience;
-    await sb.from("consultants").update(extra).eq("id", res.consultant_id);
+    emit();
+    return {};
   }
+  if (!data.email) throw new QueryError("Email-i është i detyrueshëm.");
+  const res = await rpc<{ consultant_id: string; temp_password: string }>("admin_create_consultant", {
+    p_email: data.email.trim(), p_name: data.display_name ?? "Konsulent",
+    p_title: data.professional_title ?? "", p_commission: data.commission_percentage ?? 20,
+    p_specializations: data.specializations ?? [], p_languages: data.languages ?? ["sq"],
+  });
+  const extra: Record<string, unknown> = { status: data.status ?? "pending", is_active: data.is_active ?? false };
+  if (data.bio !== undefined) extra.bio = data.bio;
+  if (data.education) extra.education = data.education;
+  if (data.certifications) extra.certifications = data.certifications;
+  if (data.years_experience !== undefined) extra.years_experience = data.years_experience;
+  await sb.from("consultants").update(extra).eq("id", res.consultant_id);
   emit();
+  return { temp_password: res.temp_password };
 }
 
 export async function saveConsultantServicesAdmin(
