@@ -50,7 +50,7 @@ export function Directory() {
           </Select>
           <Select value={spec} onChange={(e) => setSpec(e.target.value)}>
             <option value="all">Çdo specializim</option>
-            {Object.entries(SPECIALIZATIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {SPECIALIZATION_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </Select>
           <Select value={lang} onChange={(e) => setLang(e.target.value)}>
             <option value="all">Çdo gjuhë</option>
@@ -87,7 +87,7 @@ export function Directory() {
               </div>
               <div className="flex flex-wrap gap-1.5 mt-4">
                 {c.specializations.slice(0, 4).map((sp) => (
-                  <span key={sp} className="text-[11px] font-semibold bg-paper border border-line rounded-md px-2 py-1 text-ink-2">{SPECIALIZATIONS[sp] ?? sp}</span>
+                  <span key={sp} className="text-[11px] font-semibold bg-paper border border-line rounded-md px-2 py-1 text-ink-2">{SPEC_LABEL[sp] ?? sp}</span>
                 ))}
                 {c.specializations.length > 4 && <span className="text-[11px] text-mute font-semibold py-1">+{c.specializations.length - 4}</span>}
               </div>
@@ -175,7 +175,7 @@ export function ConsultantProfile() {
               <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-mute mb-2.5">Specializimet</p>
               <div className="flex flex-wrap gap-1.5">
                 {c.specializations.map((sp) => (
-                  <span key={sp} className="text-[12px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2.5 py-1.5">{SPECIALIZATIONS[sp] ?? sp}</span>
+                  <span key={sp} className="text-[12px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2.5 py-1.5">{SPEC_LABEL[sp] ?? sp}</span>
                 ))}
               </div>
             </div>

@@ -102,13 +102,40 @@ export function logout(): void {
   void sb.auth.signOut();
 }
 
+/** Raised when a valid auth session exists but the profile cannot be fetched
+ *  because of a temporary network/server failure — NOT a logout. */
+export class ProfileUnavailableError extends Error {}
+
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Classifies fetch/network failures vs. real authorization errors. */
+function isTransientError(e: unknown): boolean {
+  const m = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return ["failed to fetch", "network", "load failed", "lidhja me serverin", "timeout", "econn", "aborterror"]
+    .some((k) => m.includes(k));
+}
+
 export async function restoreSession(): Promise<Session | null> {
   const { data } = await sb.auth.getSession();
-  if (!data.session?.user) return null;
+  if (!data.session?.user) return null; // (A) genuinely no session → logged out
   try {
     return await sessionForAuthUser(data.session.user.id);
-  } catch {
-    return null;
+  } catch (firstErr) {
+    // (B) a real auth problem (deactivated account, missing profile) → logged out
+    if (!isTransientError(firstErr)) {
+      console.error("Profile load failed:", firstErr);
+      return null;
+    }
+    // (B) temporary fetch failure → retry exactly once, then surface the error
+    await delay(1200);
+    try {
+      return await sessionForAuthUser(data.session.user.id);
+    } catch (secondErr) {
+      if (isTransientError(secondErr))
+        throw new ProfileUnavailableError("Nuk u arrit lidhja me serverin për të ngarkuar profilin tuaj. Kontrolloni rrjetin dhe provoni përsëri.");
+      console.error("Profile load failed:", secondErr);
+      return null;
+    }
   }
 }
 
@@ -116,9 +143,28 @@ export function onAuthChange(cb: (s: Session | null) => void): () => void {
   const { data } = sb.auth.onAuthStateChange((event, sess) => {
     if (event === "SIGNED_OUT") { cb(null); return; }
     if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
-      if (sess?.user) sessionForAuthUser(sess.user.id).then(cb).catch(() => cb(null));
-      else cb(null);
+      if (!sess?.user) { cb(null); return; }
+      sessionForAuthUser(sess.user.id)
+        .then(cb)
+        .catch(async (e: unknown) => {
+          // never silently log the user out on a flaky fetch — retry once, bounded
+          if (isTransientError(e)) {
+            console.error("Transient profile fetch failure, retrying once:", e);
+            await delay(1500);
+            try { cb(await sessionForAuthUser(sess.user.id)); return; }
+            catch (e2) { console.error("Profile retry failed:", e2); }
+          }
+          cb(null);
+        });
     }
+  });
+  return () => data.subscription.unsubscribe();
+}
+
+/** Fires when Supabase completes a password-recovery link exchange. */
+export function watchPasswordRecovery(cb: () => void): () => void {
+  const { data } = sb.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") cb();
   });
   return () => data.subscription.unsubscribe();
 }

@@ -29,5 +29,12 @@ export function mapError(message: string): string {
   // double-booking rejected by the engine or by the exclusion constraint
   if (m.includes("exclusion") || m.includes("appointments_no_overlap") || m.includes("sapo u plotësua") || m.includes("nuk është më i disponueshëm"))
     return "Ky termin sapo u rezervua nga një përdorues tjetër. Ju lutem zgjidhni një orar tjetër.";
+  // password reset / recovery
+  if (m.includes("password should be at least") || m.includes("short password") || m.includes("weak password"))
+    return "Fjalëkalimi është shumë i dobët — duhen të paktën 8 karaktere.";
+  if (m.includes("same as the current password") || m.includes("same password"))
+    return "Fjalëkalimi i ri duhet të jetë i ndryshëm nga ai aktual.";
+  if (m.includes("invalid token") || m.includes("token has expired") || m.includes("expired token") || m.includes("invalid recovery"))
+    return "Linku i rikuperimit është i pavlefshëm ose ka skaduar. Kërkoni një të ri.";
   return message;
 }
