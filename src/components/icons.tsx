@@ -37,6 +37,7 @@ export const IFolder = (p: P) => base(p, <><path d="M3.5 6.5A1.5 1.5 0 015 5h4l2
 export const IFile = (p: P) => base(p, <><path d="M6 3.5h8L19 8.5V20a1 1 0 01-1 1H6a1 1 0 01-1-1V4.5a1 1 0 011-1z" /><path d="M14 3.5V9h5" /></>);
 export const IUpload = (p: P) => base(p, <><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5" /><path d="M4.5 15.5V19a1.5 1.5 0 001.5 1.5h12A1.5 1.5 0 0019.5 19v-3.5" /></>);
 export const IDownload = (p: P) => base(p, <><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" /><path d="M4.5 15.5V19A1.5 1.5 0 006 20.5h12a1.5 1.5 0 001.5-1.5v-3.5" /></>);
+export const ILock = (p: P) => base(p, <><rect x="5" y="11" width="14" height="9.5" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /><path d="M12 15v2" /></>);
 export const IEuro = (p: P) => base(p, <><path d="M17.5 6.5a6.5 6.5 0 100 11" /><path d="M4.5 10.5h9M4.5 13.5h8" /></>);
 export const IInvoice = (p: P) => base(p, <><path d="M6 3.5h12V21l-2.4-1.6L13.2 21l-2.4-1.6L8.4 21 6 19.4z" /><path d="M9 8h6M9 11.5h6M9 15h3.5" /></>);
 export const IStar = ({ filled, ...p }: P & { filled?: boolean }) => base({ ...p, fill: filled ? "currentColor" : "none" }, <path d="M12 3.6l2.5 5.2 5.7.7-4.2 3.9 1.1 5.6-5.1-2.8-5.1 2.8 1.1-5.6L3.8 9.5l5.7-.7z" />);

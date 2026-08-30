@@ -4,6 +4,7 @@ import { useApp, useAsync } from "../lib/store";
 import {
   consultantDashboard, listAppointments, confirmAppointment, completeAppointment, markNoShow,
   cancelAppointmentByStaff, rescheduleByStaff, listProjects, getProjectDetail, saveTask,
+  updateProjectStatus,
   consultantClients, listFiles, uploadFile, downloadFile, deleteFile,
   listPayments, listReviews, getConsultantById, saveConsultantAdmin, saveWeeklyAvailability,
   addBlock, removeBlock, toggleGoogleCalendar, listActiveServices,
@@ -21,7 +22,7 @@ import {
 } from "../components/ui";
 import { PortalShell, type NavItem } from "../components/layout";
 import { PlannerCalendar, MiniAgenda, type PlannerView } from "../components/calendar";
-import { IGrid, ICal, IFolder, IUsers, IFile, IScatter, IEuro, IStar, IClock, IUser, ICheck, IWarn, IX, IPlus, IVideo, IGoogle, IUpload, IDownload, ITrash, IArrowR } from "../components/icons";
+import { IGrid, ICal, IFolder, IUsers, IFile, IScatter, IEuro, IStar, IClock, IUser, ICheck, IWarn, IX, IPlus, IVideo, IGoogle, IUpload, IDownload, ITrash, IArrowR, ILock } from "../components/icons";
 import { FileList } from "./ClientPortal";
 
 const NAV: NavItem[] = [
@@ -410,7 +411,24 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
   const detail = useAsync(() => getProjectDetail(session, id), [session?.user_id, id]);
   const [taskModal, setTaskModal] = useState<null | { id?: string; name: string; status: string; progress: number; notes: string; assigned_consultant_id: string | null }>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const d = detail.data;
+
+  // The signed-in consultant's own consultants row ("" if staff-only / not linked).
+  const me = useAsync(async () => (session?.user.role === "consultant" ? myConsultantId(session) : ""), [session?.user_id]);
+
+  const changeStatus = async (status: string) => {
+    if (!d || statusSaving) return;
+    setStatusSaving(true);
+    try {
+      await updateProjectStatus(session, d.project.id, status as never);
+      toast("Statusi u përditësua.");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gabim gjatë ndryshimit të statusit.", "bad");
+    } finally {
+      setStatusSaving(false);
+    }
+  };
 
   const saveT = async () => {
     if (!taskModal || !d) return;
@@ -427,6 +445,13 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
   if (detail.error || !d) return <ErrorState message={detail.error ?? "Projekti nuk u gjet."} onRetry={detail.retry} />;
   const p = d.project;
 
+  // Status edits are allowed at the database only for staff or the PRIMARY consultant.
+  // A collaborator (non-primary) sees the status read-only but can still edit analysis tasks.
+  const isStaff = session?.user.role === "admin" || session?.user.role === "super_admin";
+  const isPrimary = !!me.data && me.data === p.primary_consultant_id;
+  const canChangeStatus = isStaff || isPrimary;
+  const primaryName = p.collaborators.find((c) => c.consultant_id === p.primary_consultant_id)?.name ?? "";
+
   return (
     <div>
       <Link to="/consultant/projektet" className="text-[13px] font-semibold text-mute hover:text-primary-700">← Projektet</Link>
@@ -435,7 +460,28 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="font-display text-xl font-bold tracking-tight text-ink">{p.title}</h1>
-              <Badge tone="info">{PROJECT_STATUS[p.status]}</Badge>
+              {canChangeStatus ? (
+                <Select
+                  value={p.status}
+                  disabled={statusSaving}
+                  onChange={(e) => void changeStatus(e.target.value)}
+                  className="!w-48 !h-8 !text-[12.5px] !font-sans !font-bold"
+                  title="Ndrysho statusin e projektit"
+                >
+                  {Object.entries(PROJECT_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Badge tone="info">{PROJECT_STATUS[p.status]}</Badge>
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-mute bg-paper border border-line rounded-md px-2 py-1"
+                    title={`Statusin e ndryshon konsulent kryesor${primaryName ? ` (${primaryName})` : ""} ose stafi.`}
+                  >
+                    <ILock size={11} /> Vetëm lexim
+                  </span>
+                </span>
+              )}
+              {isPrimary && <Badge tone="ok">Konsulent kryesor</Badge>}
             </div>
             <p className="text-[13px] text-mute mt-1.5">{p.client_name} · {p.university || "—"} {p.deadline && `· Afati ${fmtDate(p.deadline)}`}</p>
           </div>
