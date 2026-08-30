@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useApp, useAsync } from "../lib/store";
 import { listPublicConsultants, getConsultantBySlug, listActiveServices, submitApplication, listReviews } from "../lib/services";
-import { SPECIALIZATIONS, SPECIALIZATION_OPTIONS, LANGUAGES, SERVICE_CATEGORY, DAYS_SQ } from "../lib/i18n";
+import { SPEC_LABEL, SPECIALIZATION_OPTIONS, LANGUAGES, SERVICE_CATEGORY, DAYS_SQ } from "../lib/i18n";
 import { fmtEuro, fmtDate, fmtDuration, daysUntil, cls } from "../lib/utils";
 import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Field, Select, SearchInput, Skeleton, Stars, TableSkeleton, TextArea, TextInput, Toggle } from "../components/ui";
 import { IArrowR, ICheck, IClock, IGraduation, ISpark, IUser, ICal, IShield, ISigma } from "../components/icons";
@@ -23,7 +23,12 @@ export function Directory() {
       const s = q.toLowerCase();
       list = list.filter((c) => c.display_name.toLowerCase().includes(s) || c.professional_title.toLowerCase().includes(s) || c.bio.toLowerCase().includes(s));
     }
-    if (spec !== "all") list = list.filter((c) => c.specializations.includes(spec));
+    if (spec !== "all") {
+      // canonical, case-safe match: filter values are the DB keys ("Regression"…),
+      // consultant records may hold the same values in any casing
+      const want = spec.trim().toLowerCase();
+      list = list.filter((c) => c.specializations.some((s) => s.trim().toLowerCase() === want));
+    }
     if (lang !== "all") list = list.filter((c) => c.languages.includes(lang));
     if (service !== "all") list = list.filter((c) => c.services.some((s) => s.service_id === service));
     return [...list].sort((a, b) =>
