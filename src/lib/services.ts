@@ -1315,12 +1315,17 @@ export async function listActivity(
   return { rows: rows.slice((page - 1) * perPage, page * perPage), total };
 }
 
-/** Reminder scheduler — idempotent server-side (dedupe keys), skips cancelled appointments. */
-export async function runReminderCheck(): Promise<number> {
-  const n = await rpc<number>("reminder_sweep");
-  if (n > 0) emit();
-  return n;
-}
+/**
+ * Reminder generation is SERVER-ONLY. The `reminder_sweep` RPC has its
+ * EXECUTE grant revoked from anon/authenticated/public (migration
+ * 20260215000009) and is intended to run via pg_cron:
+ *
+ *   select cron.schedule('statlab-reminder-sweep', '*\/15 * * * *',
+ *     $$ select public.reminder_sweep(); $$);
+ *
+ * The frontend only manages reminder *configuration* (settings.reminder_hours,
+ * see AdminSettings); booking/mutation flows write their own notification rows.
+ */
 
 export async function giveConsent(session: Session | null, type: "privacy" | "terms" | "data_processing" | "confidentiality"): Promise<void> {
   const s = requireSession(session);

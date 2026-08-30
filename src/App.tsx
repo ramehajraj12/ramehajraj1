@@ -1,7 +1,6 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { HashRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AppProvider, useApp, RequireRole } from "./lib/store";
-import { runReminderCheck } from "./lib/services";
 import { PublicLayout } from "./components/layout";
 import { cls } from "./lib/utils";
 import { ICheck, IWarn, IInfo, IX } from "./components/icons";
@@ -44,15 +43,6 @@ function ToastHost() {
   );
 }
 
-function Boot() {
-  // idempotent reminder scheduler — runs once per load, dedupes per day
-  useEffect(() => {
-    const t = setTimeout(() => { void runReminderCheck().catch(() => undefined); }, 1500);
-    return () => clearTimeout(t);
-  }, []);
-  return null;
-}
-
 function Public({ children }: { children: React.ReactNode }) {
   return <PublicLayout>{children}</PublicLayout>;
 }
@@ -61,7 +51,6 @@ export default function App() {
   return (
     <AppProvider>
       <HashRouter>
-        <Boot />
         <Routes>
           {/* public */}
           <Route path="/" element={<Public><Home /></Public>} />
