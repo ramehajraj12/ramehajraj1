@@ -1042,6 +1042,15 @@ export async function setWaitlistStatus(session: Session | null, id: string, sta
   emit();
 }
 
+/** Remove an obsolete waitlist row (RLS: staff-only delete). */
+export async function deleteWaitlist(session: Session | null, id: string): Promise<void> {
+  requireAdmin(session);
+  const { error } = await sb.from("waitlist").delete().eq("id", id);
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "waitlist.deleted", p_entity_type: "waitlist", p_entity_id: id, p_metadata: "" }).catch(() => undefined);
+  emit();
+}
+
 export interface ApplicationPayload {
   name: string; email: string; phone: string; country: string;
   professional_title: string; education: string; years_experience: number;
@@ -1216,6 +1225,118 @@ export async function saveConsultantServicesAdmin(
     { onConflict: "consultant_id,service_id" },
   );
   if (error) throw new QueryError(mapError(error.message));
+  emit();
+}
+
+/**
+ * Consultant SELF-SERVICE profile update (fixes the previous admin-gated path).
+ * An approved consultant may edit their own public profile fields only.
+ * RLS (`consultants_update`) already restricts the row to user_id = auth.uid();
+ * here we additionally whitelist the editable columns so protected fields
+ * (status, is_active, is_featured, rating, review_count, commission, user_id)
+ * can never be touched from this entry point.
+ */
+export async function saveConsultantSelf(
+  session: Session | null,
+  patch: Partial<{
+    display_name: string; professional_title: string; bio: string;
+    education: string[]; certifications: string[]; years_experience: number;
+    languages: string[]; specializations: string[];
+  }>,
+): Promise<void> {
+  const s = requireSession(session);
+  if (s.user.role !== "consultant") throw new QueryError("Vetëm konsulentët e aprovuar mund të redaktojnë profilin.");
+  const cId = await myConsultantId(session);
+  if (!cId) throw new QueryError("Profili i konsulentit nuk u gjet.");
+  const allowed: Record<string, unknown> = {};
+  const keys = ["display_name", "professional_title", "bio", "education", "certifications", "years_experience", "languages", "specializations"] as const;
+  for (const k of keys) if (patch[k] !== undefined) allowed[k] = patch[k];
+  if (Object.keys(allowed).length === 0) return;
+  const { error } = await sb.from("consultants").update(allowed).eq("id", cId);
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "consultant.self_updated", p_entity_type: "consultant", p_entity_id: cId, p_metadata: Object.keys(allowed).join(", ") }).catch(() => undefined);
+  emit();
+}
+
+// ── Hardened CRUD: deletes / edits that persist (never UI-only) ──────────────
+
+/** Delete an analysis task (RLS: can_access_project on the parent project). */
+export async function deleteAnalysisTask(session: Session | null, taskId: string): Promise<void> {
+  requireSession(session);
+  const { error } = await sb.from("analysis_tasks").delete().eq("id", taskId);
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "task.deleted", p_entity_type: "analysis_task", p_entity_id: taskId, p_metadata: "" }).catch(() => undefined);
+  emit();
+}
+
+/** Delete a project note (RLS: author or staff). */
+export async function deleteProjectNote(session: Session | null, noteId: string): Promise<void> {
+  requireSession(session);
+  const { error } = await sb.from("project_notes").delete().eq("id", noteId);
+  if (error) throw new QueryError(mapError(error.message));
+  emit();
+}
+
+/** Unassign a consultant from a project. The PRIMARY consultant can't be removed
+ *  through this path — callers must reassign the lead first (DB consistency). */
+export async function removeProjectConsultant(session: Session | null, projectId: string, consultantId: string): Promise<void> {
+  requireAdmin(session);
+  const [proj] = await selectAll<Project>("projects", (q) => q.select("id, primary_consultant_id").eq("id", projectId));
+  if (proj && proj.primary_consultant_id === consultantId)
+    throw new QueryError("Konsulenti kryesor nuk mund të hiqet. Caktoni fillimisht një konsulent tjetër kryesor.");
+  const { error } = await sb.from("project_consultants").delete().match({ project_id: projectId, consultant_id: consultantId });
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "consultant.unassigned", p_entity_type: "project", p_entity_id: projectId, p_metadata: consultantId }).catch(() => undefined);
+  emit();
+}
+
+/** Remove a single service offering from a consultant (does NOT touch the global service). */
+export async function removeConsultantService(session: Session | null, consultantId: string, serviceId: string): Promise<void> {
+  requireAdmin(session);
+  const { error } = await sb.from("consultant_services").delete().match({ consultant_id: consultantId, service_id: serviceId });
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "consultant_service.removed", p_entity_type: "consultant", p_entity_id: consultantId, p_metadata: serviceId }).catch(() => undefined);
+  emit();
+}
+
+/**
+ * Service lifecycle: deactivate is always safe (soft delete). Hard delete is
+ * refused if the service is referenced by any appointment / consultant offer,
+ * protecting referential history. The database remains the authority.
+ */
+export async function deactivateService(session: Session | null, id: string): Promise<void> {
+  requireAdmin(session);
+  const { error } = await sb.from("services").update({ is_active: false }).eq("id", id);
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "service.deactivated", p_entity_type: "service", p_entity_id: id, p_metadata: "" }).catch(() => undefined);
+  emit();
+}
+
+export async function hardDeleteServiceIfUnused(session: Session | null, id: string): Promise<void> {
+  requireAdmin(session);
+  const appts = await selectAll<{ id: string }>("appointments", (q) => q.select("id").eq("service_id", id).limit(1));
+  const offers = await selectAll<{ id: string }>("consultant_services", (q) => q.select("id").eq("service_id", id).limit(1));
+  if (appts.length || offers.length)
+    throw new QueryError("Ky shërbim është i referencuar nga termine/oferta — çaktivizoheni në vend të fshirjes.");
+  const { error } = await sb.from("services").delete().eq("id", id);
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "service.deleted", p_entity_type: "service", p_entity_id: id, p_metadata: "" }).catch(() => undefined);
+  emit();
+}
+
+/** Edit mutable project fields (description, deadline, research data, topic). */
+export async function updateProjectEdit(
+  session: Session | null, id: string,
+  patch: Partial<{ description: string; research_topic: string; research_questions: string; hypotheses: string; deadline: string | null; university: string; study_level: string }>,
+): Promise<void> {
+  requireStaff(session);
+  const allowed: Record<string, unknown> = {};
+  for (const k of ["description", "research_topic", "research_questions", "hypotheses", "deadline", "university", "study_level"] as const)
+    if (patch[k] !== undefined) allowed[k] = patch[k];
+  if (Object.keys(allowed).length === 0) return;
+  const { error } = await sb.from("projects").update(allowed).eq("id", id);
+  if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "project.updated", p_entity_type: "project", p_entity_id: id, p_metadata: Object.keys(allowed).join(", ") }).catch(() => undefined);
   emit();
 }
 

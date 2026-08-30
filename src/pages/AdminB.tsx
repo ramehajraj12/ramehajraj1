@@ -6,8 +6,9 @@ import {
   saveTask, addProjectNote, listClientsAdmin, listConsultantsAdmin, saveConsultantAdmin,
   saveConsultantServicesAdmin, saveWeeklyAvailability, addBlock, removeBlock,
   listAllServicesAdmin, saveServiceAdmin, listApplications, setApplicationStatus,
-  listWaitlist, setWaitlistStatus, listAppointments, listActiveServices,
-  getConsultantServiceRows,
+  listWaitlist, setWaitlistStatus, deleteWaitlist, listAppointments, listActiveServices,
+  getConsultantServiceRows, deleteAnalysisTask, deleteProjectNote, removeProjectConsultant,
+  removeConsultantService, deactivateService, hardDeleteServiceIfUnused,
   type AppointmentRow, type ProjectRow,
 } from "../lib/services";
 
@@ -23,7 +24,7 @@ import {
 import { MiniAgenda } from "../components/calendar";
 import { AppointmentDrawer } from "./ConsultantPortal";
 import { FileList } from "./ClientPortal";
-import { IFolder, IPlus, IUsers, IUser, ISpark, IBriefcase, IQueue, ICheck, IX, IChevR, IStar, IWarn, IArrowR, ICal } from "../components/icons";
+import { IFolder, IPlus, IUsers, IUser, ISpark, IBriefcase, IQueue, ICheck, IX, IChevR, IStar, IWarn, IArrowR, ICal, ITrash } from "../components/icons";
 
 // ─── Projects list ────────────────────────────────────────────────────────────
 export function AdminProjects() {
@@ -130,6 +131,7 @@ export function AdminProjectDetail({ id }: { id: string }) {
   const [assignSel, setAssignSel] = useState({ consultant_id: "", role: "statistics" });
   const [taskModal, setTaskModal] = useState<null | { id?: string; name: string; status: string; progress: number; notes: string; assigned_consultant_id: string | null }>(null);
   const [tBusy, setTBusy] = useState(false);
+  const [delId, setDelId] = useState<string | null>(null);
   const d = detail.data;
 
   if (detail.loading) return <div className="space-y-4"><Skeleton className="h-28 rounded-xl" /><Skeleton className="h-80 rounded-xl" /></div>;
@@ -158,6 +160,25 @@ export function AdminProjectDetail({ id }: { id: string }) {
       await assignProjectConsultant(session, id, assignSel.consultant_id, assignSel.role as never);
       toast("Konsulenti u caktua dhe u njoftua."); setAssignOpen(false); detail.retry();
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); }
+  };
+
+  const delTask = async (taskId: string, name: string) => {
+    if (!confirm(`Jeni i sigurt që dëshironi ta fshini fazën "${name}"? Ky veprim nuk mund të kthehet.`)) return;
+    setDelId(taskId);
+    try { await deleteAnalysisTask(session, taskId); toast("Faza u fshi."); detail.retry(); }
+    catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setDelId(null); }
+  };
+  const delNote = async (noteId: string) => {
+    if (!confirm("Jeni i sigurt që dëshironi ta fshini këtë shënim? Ky veprim nuk mund të kthehet.")) return;
+    setDelId(noteId);
+    try { await deleteProjectNote(session, noteId); toast("Shënimi u fshi."); detail.retry(); }
+    catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setDelId(null); }
+  };
+  const unassign = async (consultantId: string, name: string) => {
+    if (!confirm(`Jeni i sigurt që dëshironi ta hiqni ${name} nga projekti?`)) return;
+    setDelId(consultantId);
+    try { await removeProjectConsultant(session, id, consultantId); toast("Konsulenti u hoq nga projekti."); detail.retry(); }
+    catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setDelId(null); }
   };
 
   return (
@@ -206,11 +227,16 @@ export function AdminProjectDetail({ id }: { id: string }) {
                 {p.collaborators.map((c) => (
                   <div key={c.consultant_id} className="flex items-center gap-3">
                     <Avatar name={c.name} size={38} />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-[13.5px] font-bold text-ink">{c.name}</p>
                       <p className="text-[11.5px] text-mute capitalize">{{ lead: "Kryesor", statistics: "Statistikë", methodology: "Metodologji", data_analyst: "Analist" }[c.role]}</p>
                     </div>
-                    {c.consultant_id === p.primary_consultant_id && <Badge tone="info">Kryesor</Badge>}
+                    {c.consultant_id === p.primary_consultant_id
+                      ? <Badge tone="info">Kryesor</Badge>
+                      : <button onClick={() => void unassign(c.consultant_id, c.name)} disabled={delId === c.consultant_id}
+                          className="shrink-0 w-8 h-8 rounded-lg text-mute hover:text-bad hover:bg-bad-soft flex items-center justify-center transition-colors disabled:opacity-40" title="Largo nga projekti">
+                          <ITrash size={13} />
+                        </button>}
                   </div>
                 ))}
               </div>
@@ -232,23 +258,29 @@ export function AdminProjectDetail({ id }: { id: string }) {
             </div>
             <div className="space-y-2">
               {d.tasks.map((t) => (
-                <button key={t.id} onClick={() => setTaskModal({ id: t.id, name: t.name, status: t.status, progress: t.progress, notes: t.notes, assigned_consultant_id: t.assigned_consultant_id })}
-                  className={cls("w-full text-left p-3.5 rounded-xl border transition-all hover:border-primary-300", t.status === "not_required" ? "border-line opacity-50" : "border-line bg-card")}>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[13.5px] font-bold text-ink">{t.name}</p>
-                    <div className="flex items-center gap-2">
-                      {t.assigned_consultant_id && <span className="text-[11px] text-mute">{(consultants.data ?? []).find((c) => c.id === t.assigned_consultant_id)?.display_name ?? ""}</span>}
-                      <Badge tone={TASK_STATUS[t.status].tone as never}>{TASK_STATUS[t.status].label}</Badge>
+                <div key={t.id} className="flex items-center gap-2">
+                  <button onClick={() => setTaskModal({ id: t.id, name: t.name, status: t.status, progress: t.progress, notes: t.notes, assigned_consultant_id: t.assigned_consultant_id })}
+                    className={cls("flex-1 text-left p-3.5 rounded-xl border transition-all hover:border-primary-300", t.status === "not_required" ? "border-line opacity-50" : "border-line bg-card")}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[13.5px] font-bold text-ink">{t.name}</p>
+                      <div className="flex items-center gap-2">
+                        {t.assigned_consultant_id && <span className="text-[11px] text-mute">{(consultants.data ?? []).find((c) => c.id === t.assigned_consultant_id)?.display_name ?? ""}</span>}
+                        <Badge tone={TASK_STATUS[t.status].tone as never}>{TASK_STATUS[t.status].label}</Badge>
+                      </div>
                     </div>
-                  </div>
-                  {t.status !== "not_required" && (
-                    <div className="flex items-center gap-3 mt-2">
-                      <Progress value={t.progress} tone={t.status === "completed" ? "ok" : "primary"} className="flex-1" />
-                      <span className="font-mono text-[11px] text-mute">{t.progress}%</span>
-                    </div>
-                  )}
-                  {t.notes && <p className="text-[12px] text-mute mt-1.5 truncate">{t.notes}</p>}
-                </button>
+                    {t.status !== "not_required" && (
+                      <div className="flex items-center gap-3 mt-2">
+                        <Progress value={t.progress} tone={t.status === "completed" ? "ok" : "primary"} className="flex-1" />
+                        <span className="font-mono text-[11px] text-mute">{t.progress}%</span>
+                      </div>
+                    )}
+                    {t.notes && <p className="text-[12px] text-mute mt-1.5 truncate">{t.notes}</p>}
+                  </button>
+                  <button onClick={() => void delTask(t.id, t.name)} disabled={delId === t.id}
+                    className="shrink-0 w-9 h-9 rounded-xl border border-line text-mute hover:text-bad hover:border-bad/40 flex items-center justify-center transition-colors disabled:opacity-40" title="Fshi fazën">
+                    <ITrash size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           </Card>
@@ -264,10 +296,14 @@ export function AdminProjectDetail({ id }: { id: string }) {
               {d.activity.filter((a) => a.action === "project.note").map((n) => (
                 <div key={n.id} className="flex items-start gap-3 p-3.5 rounded-xl bg-paper border border-line">
                   <Avatar name={n.actor_name} size={30} />
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-[13px] text-ink-2">{n.metadata}</p>
                     <p className="text-[11px] text-mute font-mono mt-1">{n.actor_name} · {relativeTime(n.created_at)}</p>
                   </div>
+                  <button onClick={() => void delNote(n.id)} disabled={delId === n.id}
+                    className="shrink-0 w-8 h-8 rounded-lg text-mute hover:text-bad hover:bg-bad-soft flex items-center justify-center transition-colors disabled:opacity-40" title="Fshi shënimin">
+                    <ITrash size={13} />
+                  </button>
                 </div>
               ))}
               {d.activity.filter((a) => a.action === "project.note").length === 0 && <p className="text-[13px] text-mute">Ende pa shënime.</p>}
@@ -469,6 +505,19 @@ export function AdminConsultants() {
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusy(false); }
   };
 
+  // Remove a single service offering (DB row) for the consultant being edited.
+  // The global service itself is untouched; the local row is also cleared so a
+  // later "Ruaj" does not re-upsert it.
+  const delOffer = async (serviceId: string) => {
+    if (!edit) return;
+    if (!confirm("Jeni i sigurt që dëshironi ta hiqni këtë shërbim nga oferta e konsulentit?")) return;
+    try {
+      await removeConsultantService(session, edit, serviceId);
+      setSvcRows((rows) => rows.map((r) => r.service_id === serviceId ? { ...r, is_active: false, price: 0 } : r));
+      toast("Shërbimi u hoq nga oferta e konsulentit.");
+    } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); }
+  };
+
   const create = async () => {
     if (!newC.display_name || !newC.email) { toast("Emri dhe email janë të detyrueshëm.", "bad"); return; }
     setBusy(true);
@@ -563,6 +612,11 @@ export function AdminConsultants() {
                       </div>
                       <input type="number" value={r.price} onChange={(e) => setSvcRows(svcRows.map((x, xi) => xi === i ? { ...x, price: +e.target.value } : x))} className="w-16 h-8 px-2 rounded-lg border border-line-2 text-[12px] font-mono" title="Çmimi €" />
                       <input type="number" value={r.duration_minutes} onChange={(e) => setSvcRows(svcRows.map((x, xi) => xi === i ? { ...x, duration_minutes: +e.target.value } : x))} className="w-16 h-8 px-2 rounded-lg border border-line-2 text-[12px] font-mono" title="Minuta" />
+                      {r.is_active && (
+                        <button onClick={() => void delOffer(r.service_id)} className="shrink-0 w-8 h-8 rounded-lg text-mute hover:text-bad hover:bg-bad-soft flex items-center justify-center transition-colors" title="Fshi shërbimin nga oferta">
+                          <ITrash size={13} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -607,6 +661,16 @@ export function AdminServices() {
   const [modal, setModal] = useState<null | { id?: string }>({});
   const [f, setF] = useState({ name: "", short_description: "", description: "", category: "consultation", default_duration_minutes: 60, default_price: 50, payment_policy: "full", deposit_amount: 0, is_active: true });
   const [busy, setBusy] = useState(false);
+  const [delSvcId, setDelSvcId] = useState<string | null>(null);
+
+  // Hard-delete only when nothing references the service; otherwise the DB-backed
+  // guard rejects and we surface the message (admin should deactivate instead).
+  const delService = async (id: string, name: string) => {
+    if (!confirm(`Jeni i sigurt që dëshironi ta fshini shërbimin "${name}"? Fshihet vetëm nëse nuk është i referencuar nga asnjë termin/ofertë.`)) return;
+    setDelSvcId(id);
+    try { await hardDeleteServiceIfUnused(session, id); toast("Shërbimi u fshi."); }
+    catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setDelSvcId(null); }
+  };
 
   const openEdit = (s: { id: string; name: string; short_description: string; description: string; category: string; default_duration_minutes: number; default_price: number; payment_policy: string; deposit_amount: number; is_active: boolean }) => {
     setModal({ id: s.id });
@@ -644,7 +708,12 @@ export function AdminServices() {
                     <Td className="font-mono font-bold">{fmtEuro(s.default_price)}</Td>
                     <Td><Badge tone={s.payment_policy === "deposit" ? "teal" : s.payment_policy === "free_booking" ? "warn" : "mute"}>{s.payment_policy === "deposit" ? `Depozitë ${fmtEuro(s.deposit_amount)}` : s.payment_policy === "free_booking" ? "Më vonë" : "E plotë"}</Badge></Td>
                     <Td><Toggle checked={s.is_active} onChange={async () => { await saveServiceAdmin(session, { id: s.id, name: s.name, is_active: !s.is_active }); toast(s.is_active ? "U çaktivizua." : "U aktivizua."); }} /></Td>
-                    <Td><Button variant="outline" size="sm" onClick={() => openEdit(s)}>Redakto</Button></Td>
+                    <Td>
+                      <div className="flex gap-1.5 justify-end">
+                        <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Redakto</Button>
+                        <Button variant="ghost" size="sm" loading={delSvcId === s.id} onClick={() => void delService(s.id, s.name)} title="Fshi (vetëm nëse i papërdorur)" className="!text-mute hover:!text-bad"><ITrash size={13} /></Button>
+                      </div>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -811,8 +880,18 @@ export function AdminApplications() {
 export function AdminWaitlist() {
   const { session, toast } = useApp();
   const wl = useAsync(() => listWaitlist(session), [session?.user_id]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const label = { waiting: "Në pritje", notified: "I njoftuar", booked: "Rezervoi", expired: "Skadoi" };
   const tone = { waiting: "warn", notified: "teal", booked: "ok", expired: "mute" } as const;
+
+  const removeRow = async (id: string, name: string) => {
+    if (!confirm(`Jeni i sigurt që dëshironi ta fshini "${name}" nga lista e pritjes? Ky veprim nuk mund të kthehet.`)) return;
+    setDeletingId(id);
+    try {
+      await deleteWaitlist(session, id);
+      toast("Regjistri u fshi nga lista e pritjes.");
+    } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setDeletingId(null); }
+  };
 
   return (
     <div>
@@ -836,13 +915,16 @@ export function AdminWaitlist() {
                 </p>
               </div>
             </div>
-            {w.status === "waiting" && (
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={async () => { await setWaitlistStatus(session, w.id, "notified"); toast("U shënua si i njoftuar (email u dërgua)."); }}>Njofto</Button>
-                <Button size="sm" onClick={async () => { await setWaitlistStatus(session, w.id, "booked"); toast("U shënua si i rezervuar."); }}>Rezervoi</Button>
-                <Button size="sm" variant="ghost" onClick={async () => { await setWaitlistStatus(session, w.id, "expired"); }}>Skado</Button>
-              </div>
-            )}
+            <div className="flex gap-2 flex-wrap">
+              {w.status === "waiting" && (
+                <>
+                  <Button size="sm" variant="outline" onClick={async () => { await setWaitlistStatus(session, w.id, "notified"); toast("U shënua si i njoftuar (email u dërgua)."); }}>Njofto</Button>
+                  <Button size="sm" onClick={async () => { await setWaitlistStatus(session, w.id, "booked"); toast("U shënua si i rezervuar."); }}>Rezervoi</Button>
+                  <Button size="sm" variant="ghost" onClick={async () => { await setWaitlistStatus(session, w.id, "expired"); }}>Skado</Button>
+                </>
+              )}
+              <Button size="sm" variant="danger" loading={deletingId === w.id} onClick={() => void removeRow(w.id, w.name)}><ITrash size={12} /> Fshi</Button>
+            </div>
           </Card>
         ))}
       </div>

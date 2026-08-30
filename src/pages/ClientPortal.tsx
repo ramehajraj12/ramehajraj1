@@ -509,6 +509,7 @@ export function ClientProjectDetail({ id }: { id: string }) {
 export function FileList({ files, empty }: { files: (import("../types").ProjectFile & { uploader_name: string })[]; empty: string }) {
   const { session, toast } = useApp();
   const [signing, setSigning] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const sign = async (id: string) => {
     setSigning(id);
@@ -516,6 +517,17 @@ export function FileList({ files, empty }: { files: (import("../types").ProjectF
       const { url, expiresInMin } = await createSignedUrl(session, id);
       toast(`Link i nënshkruar (${expiresInMin} min): ${url}`);
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setSigning(null); }
+  };
+
+  // Deletes the file METADATA row (RLS: staff/uploader/client). Binary object
+  // removal in Storage is deferred and intentionally not claimed here.
+  const remove = async (id: string, name: string) => {
+    if (!confirm(`Jeni i sigurt që dëshironi ta fshini "${name}"? Ky veprim nuk mund të kthehet.`)) return;
+    setDeleting(id);
+    try {
+      await deleteFile(session, id);
+      toast("Skedari u fshi.");
+    } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setDeleting(null); }
   };
 
   if (files.length === 0) return <EmptyState icon={<IFile size={20} />} title="Asnjë skedar" hint={empty} />;
@@ -533,6 +545,7 @@ export function FileList({ files, empty }: { files: (import("../types").ProjectF
             <Button variant="outline" size="sm" onClick={async () => { try { await downloadFile(session, f.id); toast("Shkarkimi filloi."); } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } }}>
               <IDownload size={13} /> Shkarko
             </Button>
+            <Button variant="ghost" size="sm" loading={deleting === f.id} onClick={() => void remove(f.id, f.file_name)} title="Fshi skedarin" className="!text-mute hover:!text-bad"><ITrash size={13} /></Button>
           </div>
         </div>
       ))}

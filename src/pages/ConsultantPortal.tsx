@@ -7,7 +7,7 @@ import {
   listProjects, getProjectDetail, saveTask,
   updateProjectStatus,
   consultantClients, listFiles, uploadFile, downloadFile, deleteFile,
-  listPayments, listReviews, getConsultantById, saveConsultantAdmin, saveWeeklyAvailability,
+  listPayments, listReviews, getConsultantById, saveConsultantSelf, saveWeeklyAvailability,
   addBlock, removeBlock, toggleGoogleCalendar, listActiveServices,
   getMyAvailability, myConsultantId,
   type AppointmentRow,
@@ -885,7 +885,7 @@ export function ConsultantProfile() {
     if (!me.data || !f) return;
     setBusy(true);
     try {
-      await saveConsultantAdmin(session, { id: me.data.id, display_name: me.data.display_name, professional_title: f.title, bio: f.bio });
+      await saveConsultantSelf(session, { professional_title: f.title, bio: f.bio });
       toast("Profili publik u përditësua.");
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusy(false); }
   };
