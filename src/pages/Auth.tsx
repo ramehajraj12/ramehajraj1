@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApp, homeForRole } from "../lib/store";
 import { login, registerClient, registerConsultantApplicant, getMyApplication, requestPasswordReset } from "../lib/services";
 import { Button, Field, Segmented, TextArea, TextInput } from "../components/ui";
-import { LogoMark, IShield, IUser, IGraduation, IArrowR, IBriefcase } from "../components/icons";
+import { LogoMark, IShield, IUser, IGraduation, IArrowR, IBriefcase, IEye } from "../components/icons";
 import { SPECIALIZATION_OPTIONS, LANGUAGES } from "../lib/i18n";
 import { cls } from "../lib/utils";
 
