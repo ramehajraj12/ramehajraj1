@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useApp, useAsync } from "../lib/store";
 import { listPublicConsultants, getConsultantBySlug, listActiveServices, submitApplication, listReviews } from "../lib/services";
-import { SPECIALIZATIONS, SPECIALIZATION_OPTIONS, LANGUAGES, SERVICE_CATEGORY, DAYS_SQ } from "../lib/i18n";
+import { SPEC_LABEL, SPECIALIZATION_OPTIONS, LANGUAGES, SERVICE_CATEGORY, DAYS_SQ } from "../lib/i18n";
 import { fmtEuro, fmtDate, fmtDuration, daysUntil, cls } from "../lib/utils";
 import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Field, Select, SearchInput, Skeleton, Stars, TableSkeleton, TextArea, TextInput, Toggle } from "../components/ui";
 import { IArrowR, ICheck, IClock, IGraduation, ISpark, IUser, ICal, IShield, ISigma } from "../components/icons";
@@ -23,7 +23,12 @@ export function Directory() {
       const s = q.toLowerCase();
       list = list.filter((c) => c.display_name.toLowerCase().includes(s) || c.professional_title.toLowerCase().includes(s) || c.bio.toLowerCase().includes(s));
     }
-    if (spec !== "all") list = list.filter((c) => c.specializations.includes(spec));
+    if (spec !== "all") {
+      // canonical, case-safe match: filter values are the DB keys ("Regression"…),
+      // consultant records may hold the same values in any casing
+      const want = spec.trim().toLowerCase();
+      list = list.filter((c) => c.specializations.some((s) => s.trim().toLowerCase() === want));
+    }
     if (lang !== "all") list = list.filter((c) => c.languages.includes(lang));
     if (service !== "all") list = list.filter((c) => c.services.some((s) => s.service_id === service));
     return [...list].sort((a, b) =>
@@ -45,7 +50,7 @@ export function Directory() {
           </Select>
           <Select value={spec} onChange={(e) => setSpec(e.target.value)}>
             <option value="all">Çdo specializim</option>
-            {Object.entries(SPECIALIZATIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {SPECIALIZATION_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
           </Select>
           <Select value={lang} onChange={(e) => setLang(e.target.value)}>
             <option value="all">Çdo gjuhë</option>
@@ -82,7 +87,7 @@ export function Directory() {
               </div>
               <div className="flex flex-wrap gap-1.5 mt-4">
                 {c.specializations.slice(0, 4).map((sp) => (
-                  <span key={sp} className="text-[11px] font-semibold bg-paper border border-line rounded-md px-2 py-1 text-ink-2">{SPECIALIZATIONS[sp] ?? sp}</span>
+                  <span key={sp} className="text-[11px] font-semibold bg-paper border border-line rounded-md px-2 py-1 text-ink-2">{SPEC_LABEL[sp] ?? sp}</span>
                 ))}
                 {c.specializations.length > 4 && <span className="text-[11px] text-mute font-semibold py-1">+{c.specializations.length - 4}</span>}
               </div>
@@ -170,7 +175,7 @@ export function ConsultantProfile() {
               <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-mute mb-2.5">Specializimet</p>
               <div className="flex flex-wrap gap-1.5">
                 {c.specializations.map((sp) => (
-                  <span key={sp} className="text-[12px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2.5 py-1.5">{SPECIALIZATIONS[sp] ?? sp}</span>
+                  <span key={sp} className="text-[12px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2.5 py-1.5">{SPEC_LABEL[sp] ?? sp}</span>
                 ))}
               </div>
             </div>
@@ -330,7 +335,7 @@ export function BecomeConsultant() {
           <Field label="Motivim i shkurtër" required><TextArea value={f.motivation} onChange={(e) => setF({ ...f, motivation: e.target.value })} placeholder="Pse dëshironi të bashkoheni me StatLab?" /></Field>
           {err && <p className="text-[13px] text-bad font-semibold bg-bad-soft rounded-lg px-3.5 py-2.5">{err}</p>}
           <Button type="submit" size="lg" loading={sending} className="w-full">Dërgo aplikimin</Button>
-          <p className="text-[12px] text-mute text-center">Aplikimet shqyrtohen manualisht nga ekipi. Aprovimi nuk jep akses automatik — llogaria krijohet me ftesë të sigurt.</p>
+          <p className="text-[12px] text-mute text-center">Aplikimet shqyrtohen manualisht nga ekipi. Pas aprovimit fitoni akses në Portalin e Konsulentit dhe bëheni të dukshëm në direktorinë publike.</p>
         </form>
       </div>
     </div>

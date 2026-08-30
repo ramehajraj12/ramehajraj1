@@ -1,7 +1,8 @@
 import React, { useEffect } from "react";
-import { HashRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { AppProvider, useApp, RequireRole } from "./lib/store";
-import { runReminderCheck } from "./lib/services";
+import { RECOVERY_MARKER } from "./lib/supabase";
+import ResetPassword from "./pages/ResetPassword";
 import { PublicLayout } from "./components/layout";
 import { cls } from "./lib/utils";
 import { ICheck, IWarn, IInfo, IX } from "./components/icons";
@@ -10,6 +11,7 @@ import Home from "./pages/Home";
 import { Directory, ConsultantProfile as PublicConsultantProfile, BecomeConsultant, LegalPage } from "./pages/Public";
 import Booking, { ManageBooking } from "./pages/Booking";
 import AuthPage from "./pages/Auth";
+import MyApplicationPage from "./pages/MyApplication";
 import {
   ClientShell, ClientDashboard, ClientAppointments, ClientProjects, ClientProjectDetail,
   ClientFiles, ClientPayments, ClientInvoices, ClientProfile,
@@ -43,24 +45,29 @@ function ToastHost() {
   );
 }
 
-function Boot() {
-  // idempotent reminder scheduler — runs once per load, dedupes per day
-  useEffect(() => {
-    const t = setTimeout(() => { void runReminderCheck().catch(() => undefined); }, 1500);
-    return () => clearTimeout(t);
-  }, []);
-  return null;
-}
-
 function Public({ children }: { children: React.ReactNode }) {
   return <PublicLayout>{children}</PublicLayout>;
+}
+
+/** Routes a user arriving via a password-recovery link to /reset-password. */
+function RecoveryWatcher() {
+  const nav = useNavigate();
+  const loc = useLocation();
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (sessionStorage.getItem(RECOVERY_MARKER) && loc.pathname !== "/reset-password") {
+        nav("/reset-password", { replace: true });
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [nav, loc.pathname]);
+  return null;
 }
 
 export default function App() {
   return (
     <AppProvider>
       <HashRouter>
-        <Boot />
         <Routes>
           {/* public */}
           <Route path="/" element={<Public><Home /></Public>} />
@@ -72,6 +79,9 @@ export default function App() {
           <Route path="/rezervo" element={<Public><Booking /></Public>} />
           <Route path="/menaxho/:token" element={<Public><ManageBooking /></Public>} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          {/* applicant status — clients with a pending application AND approved consultants */}
+          <Route path="/aplikimi-im" element={<RequireRole roles={["client", "consultant"]}><MyApplicationPage /></RequireRole>} />
 
           {/* client portal */}
           <Route path="/client" element={<RequireRole roles={["client"]}><ClientShell><ClientDashboard /></ClientShell></RequireRole>} />

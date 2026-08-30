@@ -7,7 +7,7 @@ import { fmtEuro, fmtDate, fmtDuration, cls, daysUntil } from "../lib/utils";
 import { Avatar, Badge, Button, Card, Skeleton, Stars } from "../components/ui";
 import { ISigma, IArrowR, ICheck, IShield, IVideo, IDoc, IChevD, ISpark, IGraduation, IFlask, IBell, ICal, IUser, IScatter } from "../components/icons";
 
-function ScatterHero() {
+function ScatterHero({ firstFree }: { firstFree?: { display_name: string; next: { date: string; time: string } | null } | null }) {
   // deterministic scatter + OLS line
   const pts = useMemo(() => {
     const raw: [number, number][] = [];
@@ -68,18 +68,26 @@ function ScatterHero() {
         </div>
       </div>
 
-      {/* floating slot card */}
-      <div className="card absolute -bottom-8 left-0 sm:-left-6 p-3.5 shadow-lift anim-fade-up hidden sm:block" style={{ animationDelay: "0.45s", width: 230 }}>
-        <p className="text-[11px] font-mono uppercase tracking-[0.12em] text-mute mb-2">Termini më i afërt</p>
-        <div className="flex items-center gap-2.5">
-          <Avatar name="Dr. Arben Hoxha" size={34} />
-          <div>
-            <p className="text-[13px] font-bold text-ink leading-tight">Nesër · 09:00</p>
-            <p className="text-[11.5px] text-mute">Konsulencë SPSS · 60 min</p>
+      {/* floating slot card — real next availability from the directory */}
+      <div className="card absolute -bottom-8 left-0 sm:-left-6 p-3.5 shadow-lift anim-fade-up hidden sm:block" style={{ animationDelay: "0.45s", width: 236 }}>
+        <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-mute mb-2 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-ok pulse-dot inline-block" /> Termini më i afërt
+        </p>
+        {firstFree?.next ? (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={firstFree.display_name} size={34} />
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-bold text-ink leading-tight truncate">{firstFree.display_name}</p>
+              <p className="text-[11.5px] text-mute font-mono">
+                {daysUntil(firstFree.next.date) === 0 ? "Sot" : daysUntil(firstFree.next.date) === 1 ? "Nesër" : fmtDate(firstFree.next.date)} · {firstFree.next.time}
+              </p>
+            </div>
           </div>
-        </div>
-        <Link to="/rezervo" className="mt-2.5 h-8 rounded-lg bg-primary-50 text-primary-700 text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-primary-100 transition-colors">
-          Rezervo <IArrowR size={13} />
+        ) : (
+          <p className="text-[12.5px] font-semibold text-ink-2">Zgjidhni shërbimin dhe gjeni termin tuaj.</p>
+        )}
+        <Link to="/rezervo" className="mt-2.5 h-8 rounded-[9px] bg-primary-50 text-primary-700 text-[12px] font-bold flex items-center justify-center gap-1.5 hover:bg-primary-100 transition-colors">
+          {firstFree?.next ? "Rezervo" : "Gjej termin të lirë"} <IArrowR size={13} />
         </Link>
       </div>
     </div>
@@ -126,11 +134,25 @@ export default function Home() {
   const reviews = useAsync(() => getPublicReviews(), []);
   const [openFaq, setOpenFaq] = useState(0);
 
+  // real, live figures for the hero — computed from the public directory
+  const firstFree = useMemo(() => (consultants.data ?? []).find((c) => c.next) ?? null, [consultants.data]);
+  const avgRating = useMemo(() => {
+    const rated = (consultants.data ?? []).filter((c) => c.review_count > 0);
+    if (!rated.length) return null;
+    return rated.reduce((a, c) => a + Number(c.rating), 0) / rated.length;
+  }, [consultants.data]);
+  const heroStats: [string, string][] = [
+    [consultants.data ? String(consultants.data.length) : "—", "konsulentë aktivë"],
+    [avgRating ? `${avgRating.toFixed(1)}★` : "—", "vlerësimi mesatar"],
+    [services.data ? String(services.data.length) : "—", "shërbime aktive"],
+  ];
+
   return (
     <div className="bg-graph">
       {/* ── HERO ── */}
       <section className="relative overflow-hidden">
-        <div className="max-w-6xl mx-auto px-4 pt-14 lg:pt-20 pb-24 grid lg:grid-cols-[1.05fr_0.95fr] gap-14 items-start">
+        <div className="absolute inset-0 bg-ambient pointer-events-none" aria-hidden="true" />
+        <div className="max-w-6xl mx-auto px-4 pt-14 lg:pt-20 pb-24 grid lg:grid-cols-[1.05fr_0.95fr] gap-14 items-start relative">
           <div className="anim-fade-up">
             <div className="inline-flex items-center gap-2 bg-card border border-line rounded-full pl-2 pr-3.5 py-1.5 shadow-soft">
               <span className="bg-primary-600 text-primary-50 rounded-full px-2 py-0.5 text-[10.5px] font-bold font-mono tracking-wide">SPSS 29</span>
@@ -152,10 +174,10 @@ export default function Home() {
               </Link>
             </div>
             <div className="grid grid-cols-3 gap-6 mt-12 max-w-md">
-              {[["2,400+", "konsulta të mbajtura"], ["45", "universitete të mbuluara"], ["4.8★", "vlerësim mesatar"]].map(([v, l]) => (
-                <div key={l}>
-                  <p className="font-display text-2xl font-bold text-ink">{v}</p>
-                  <p className="text-[12.5px] text-mute mt-0.5">{l}</p>
+              {heroStats.map(([v, l]) => (
+                <div key={l} className="border-l-2 border-line pl-3.5">
+                  <p className="font-display text-[22px] font-bold text-ink tracking-tight tabular-nums">{v}</p>
+                  <p className="text-[11.5px] text-mute mt-0.5">{l}</p>
                 </div>
               ))}
             </div>

@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { useApp, useAsync } from "../lib/store";
 import {
   consultantDashboard, listAppointments, confirmAppointment, completeAppointment, markNoShow,
-  cancelAppointmentByStaff, rescheduleByStaff, listProjects, getProjectDetail, saveTask,
+  cancelAppointmentByStaff, rescheduleByStaff, rescheduleByConsultant, cancelByConsultant,
+  listProjects, getProjectDetail, saveTask,
+  updateProjectStatus,
   consultantClients, listFiles, uploadFile, downloadFile, deleteFile,
-  listPayments, listReviews, getConsultantById, saveConsultantAdmin, saveWeeklyAvailability,
+  listPayments, listReviews, getConsultantById, saveConsultantSelf, saveWeeklyAvailability,
   addBlock, removeBlock, toggleGoogleCalendar, listActiveServices,
   getMyAvailability, myConsultantId,
   type AppointmentRow,
@@ -21,7 +23,7 @@ import {
 } from "../components/ui";
 import { PortalShell, type NavItem } from "../components/layout";
 import { PlannerCalendar, MiniAgenda, type PlannerView } from "../components/calendar";
-import { IGrid, ICal, IFolder, IUsers, IFile, IScatter, IEuro, IStar, IClock, IUser, ICheck, IWarn, IX, IPlus, IVideo, IGoogle, IUpload, IDownload, ITrash, IArrowR } from "../components/icons";
+import { IGrid, ICal, IFolder, IUsers, IFile, IScatter, IEuro, IStar, IClock, IUser, ICheck, IWarn, IX, IPlus, IVideo, IGoogle, IUpload, IDownload, ITrash, IArrowR, ILock } from "../components/icons";
 import { FileList } from "./ClientPortal";
 
 const NAV: NavItem[] = [
@@ -126,6 +128,11 @@ export function AppointmentDrawer({ appt, onClose, onChanged, showClientInfo = t
 
   if (!appt) return null;
   const isStaff = session?.user.role === "admin" || session?.user.role === "super_admin" || session?.user.role === "consultant";
+  // consultants operate on their own appointments through ownership-scoped RPCs
+  const isConsultant = session?.user.role === "consultant";
+  const doCancel = () => isConsultant
+    ? cancelByConsultant(session, appt.id, "Anuluar nga konsulenti")
+    : cancelAppointmentByStaff(session, appt.id, "Anuluar nga stafi");
 
   const act = async (fn: () => Promise<unknown>, msg: string) => {
     setConfirming(true);
@@ -208,7 +215,7 @@ export function AppointmentDrawer({ appt, onClose, onChanged, showClientInfo = t
         <p className="text-[13.5px] text-mute">Anulo <b className="text-ink">{appt.reference}</b> — {fmtDateLong(appt.date)} në {appt.start_time}?</p>
         <div className="flex gap-3 mt-5">
           <Button variant="ghost" onClick={() => setCancelOpen(false)}>Kthehu</Button>
-          <Button variant="danger" className="flex-1" loading={confirming} onClick={() => act(() => cancelAppointmentByStaff(session, appt.id, "Anuluar nga stafi"), "Termini u anulua.")}>Po, anulo</Button>
+          <Button variant="danger" className="flex-1" loading={confirming} onClick={() => act(() => doCancel(), "Termini u anulua.")}>Po, anulo</Button>
         </div>
       </Modal>
     </>
@@ -268,11 +275,14 @@ function RescheduleModal({ appt, onClose, onDone }: { appt: AppointmentRow | nul
     return () => { alive = false; };
   }, [date, appt]);
 
+  const isConsultant = session?.user.role === "consultant";
   const submit = async () => {
     if (!appt || !date || !time) { toast("Zgjidhni datën dhe orën.", "bad"); return; }
     setBusy(true);
     try {
-      await rescheduleByStaff(session, appt.id, date, time);
+      // consultants use the ownership-scoped RPC; staff keep the staff RPC
+      if (isConsultant) await rescheduleByConsultant(session, appt.id, date, time);
+      else await rescheduleByStaff(session, appt.id, date, time);
       toast("Termini u rizhvendos.");
       onDone();
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusy(false); }
@@ -410,7 +420,25 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
   const detail = useAsync(() => getProjectDetail(session, id), [session?.user_id, id]);
   const [taskModal, setTaskModal] = useState<null | { id?: string; name: string; status: string; progress: number; notes: string; assigned_consultant_id: string | null }>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [selAppt, setSelAppt] = useState<AppointmentRow | null>(null);
   const d = detail.data;
+
+  // The signed-in consultant's own consultants row ("" if staff-only / not linked).
+  const me = useAsync(async () => (session?.user.role === "consultant" ? myConsultantId(session) : ""), [session?.user_id]);
+
+  const changeStatus = async (status: string) => {
+    if (!d || statusSaving) return;
+    setStatusSaving(true);
+    try {
+      await updateProjectStatus(session, d.project.id, status as never);
+      toast("Statusi u përditësua.");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gabim gjatë ndryshimit të statusit.", "bad");
+    } finally {
+      setStatusSaving(false);
+    }
+  };
 
   const saveT = async () => {
     if (!taskModal || !d) return;
@@ -427,6 +455,13 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
   if (detail.error || !d) return <ErrorState message={detail.error ?? "Projekti nuk u gjet."} onRetry={detail.retry} />;
   const p = d.project;
 
+  // Status edits are allowed at the database only for staff or the PRIMARY consultant.
+  // A collaborator (non-primary) sees the status read-only but can still edit analysis tasks.
+  const isStaff = session?.user.role === "admin" || session?.user.role === "super_admin";
+  const isPrimary = !!me.data && me.data === p.primary_consultant_id;
+  const canChangeStatus = isStaff || isPrimary;
+  const primaryName = p.collaborators.find((c) => c.consultant_id === p.primary_consultant_id)?.name ?? "";
+
   return (
     <div>
       <Link to="/consultant/projektet" className="text-[13px] font-semibold text-mute hover:text-primary-700">← Projektet</Link>
@@ -435,7 +470,28 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="font-display text-xl font-bold tracking-tight text-ink">{p.title}</h1>
-              <Badge tone="info">{PROJECT_STATUS[p.status]}</Badge>
+              {canChangeStatus ? (
+                <Select
+                  value={p.status}
+                  disabled={statusSaving}
+                  onChange={(e) => void changeStatus(e.target.value)}
+                  className="!w-48 !h-8 !text-[12.5px] !font-sans !font-bold"
+                  title="Ndrysho statusin e projektit"
+                >
+                  {Object.entries(PROJECT_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Badge tone="info">{PROJECT_STATUS[p.status]}</Badge>
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-mute bg-paper border border-line rounded-md px-2 py-1"
+                    title={`Statusin e ndryshon konsulent kryesor${primaryName ? ` (${primaryName})` : ""} ose stafi.`}
+                  >
+                    <ILock size={11} /> Vetëm lexim
+                  </span>
+                </span>
+              )}
+              {isPrimary && <Badge tone="ok">Konsulent kryesor</Badge>}
             </div>
             <p className="text-[13px] text-mute mt-1.5">{p.client_name} · {p.university || "—"} {p.deadline && `· Afati ${fmtDate(p.deadline)}`}</p>
           </div>
@@ -478,7 +534,7 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
           </Card>
           <Card className="p-5">
             <h2 className="font-display font-bold text-ink mb-3.5">Terminet e lidhura</h2>
-            <MiniAgenda list={d.appointments} onEventClick={() => {}} empty="Asnjë termin." />
+            <MiniAgenda list={d.appointments} onEventClick={setSelAppt} empty="Asnjë termin." />
           </Card>
         </div>
       </div>
@@ -509,6 +565,10 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
           </div>
         )}
       </Modal>
+
+      {/* linked appointment detail — same drawer used across the consultant portal;
+          actions inside it are ownership-scoped server-side */}
+      <AppointmentDrawer appt={selAppt} onClose={() => setSelAppt(null)} onChanged={detail.retry} />
     </div>
   );
 }
@@ -825,7 +885,7 @@ export function ConsultantProfile() {
     if (!me.data || !f) return;
     setBusy(true);
     try {
-      await saveConsultantAdmin(session, { id: me.data.id, display_name: me.data.display_name, professional_title: f.title, bio: f.bio });
+      await saveConsultantSelf(session, { professional_title: f.title, bio: f.bio });
       toast("Profili publik u përditësua.");
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusy(false); }
   };
