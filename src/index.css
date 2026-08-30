@@ -1,1 +1,137 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary-50: #eef3fe;
+  --color-primary-100: #dce7fd;
+  --color-primary-200: #b9ccfb;
+  --color-primary-300: #8fabf7;
+  --color-primary-400: #5c80ef;
+  --color-primary-500: #2f57e4;
+  --color-primary-600: #1b44cc;
+  --color-primary-700: #1738a0;
+  --color-primary-800: #122c7d;
+  --color-primary-900: #0d2059;
+
+  --color-ink: #0b142e;
+  --color-ink-2: #31405f;
+  --color-mute: #61708c;
+  --color-paper: #f4f6fb;
+  --color-card: #fcfdff;
+  --color-line: #e4e9f2;
+  --color-line-2: #d3dae8;
+
+  --color-ok: #177a48;
+  --color-ok-soft: #e5f3ec;
+  --color-warn: #96690a;
+  --color-warn-soft: #f8f0da;
+  --color-bad: #bc4242;
+  --color-bad-soft: #f9ebeb;
+  --color-teal: #0e8f96;
+  --color-teal-soft: #e1f2f3;
+
+  --shadow-xs: 0 1px 2px rgb(11 20 46 / 0.05);
+  --shadow-soft: 0 1px 2px rgb(11 20 46 / 0.04), 0 10px 28px -12px rgb(11 20 46 / 0.14);
+  --shadow-lift: 0 2px 5px rgb(11 20 46 / 0.05), 0 18px 44px -14px rgb(11 20 46 / 0.2);
+  --shadow-pop: 0 4px 10px -2px rgb(11 20 46 / 0.08), 0 28px 64px -18px rgb(11 20 46 / 0.3);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+::selection { background: var(--color-primary-200); color: var(--color-primary-900); }
+
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgb(11 20 46 / 0.14); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: rgb(11 20 46 / 0.26); background-clip: content-box; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* ── surfaces ─────────────────────────────────────────────── */
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-xs);
+}
+
+/* statistical graph-paper texture — the platform's ambient signature */
+.bg-graph {
+  background-image:
+    linear-gradient(rgb(11 20 46 / 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(11 20 46 / 0.032) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+.bg-graph-dark {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+.bg-ambient {
+  background:
+    radial-gradient(1100px 460px at 88% -12%, rgb(47 87 228 / 0.075), transparent 62%),
+    radial-gradient(820px 400px at -8% 24%, rgb(14 143 150 / 0.05), transparent 58%);
+}
+
+/* ── motion ───────────────────────────────────────────────── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96) translateY(6px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes drawLine { from { stroke-dashoffset: 460; } to { stroke-dashoffset: 0; } }
+@keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.78); } }
+@keyframes drift { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.75; } }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
+
+.anim-fade-up { animation: fadeUp 0.5s var(--ease-out) both; }
+.anim-fade-in { animation: fadeIn 0.3s ease both; }
+.anim-scale-in { animation: scaleIn 0.22s var(--ease-out) both; }
+.anim-toast { animation: toastIn 0.28s var(--ease-out) both; }
+.anim-shake { animation: shake 0.4s ease both; }
+.pulse-dot { animation: pulseDot 1.8s ease-in-out infinite; }
+.drift-dot { animation: drift 2.6s ease-in-out infinite; }
+.regression-line { stroke-dasharray: 460; animation: drawLine 1.8s 0.5s cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+.stagger > * { animation: fadeUp 0.5s var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.03s; }
+.stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger > *:nth-child(3) { animation-delay: 0.13s; }
+.stagger > *:nth-child(4) { animation-delay: 0.18s; }
+.stagger > *:nth-child(5) { animation-delay: 0.23s; }
+.stagger > *:nth-child(6) { animation-delay: 0.28s; }
+
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.55s var(--ease-out), transform 0.55s var(--ease-out); }
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+/* ── controls ─────────────────────────────────────────────── */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid rgb(92 128 239 / 0.65);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.5; }
+
+/* avatar hover veil */
+.avatar-veil { opacity: 0; transition: opacity 0.2s ease; }
+.group\/av:hover .avatar-veil, .group\/av:focus-within .avatar-veil { opacity: 1; }
