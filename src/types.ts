@@ -6,7 +6,6 @@ export type Lang = "sq" | "de" | "en";
 export interface User {
   id: string;
   email: string;
-  password_hash: string;
   full_name: string;
   phone: string;
   avatar_color: string;
@@ -20,6 +19,14 @@ export interface User {
 export interface Session {
   user_id: string;
   user: User;
+}
+
+/** Appointment joined with display data (service/consultant names, history). */
+export interface AppointmentRow extends Appointment {
+  service_name: string;
+  consultant_name: string;
+  consultant_slug: string;
+  client_user?: User;
 }
 
 export type ConsultantStatus = "pending" | "active" | "suspended" | "inactive";

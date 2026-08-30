@@ -26,7 +26,8 @@ export function mapError(message: string): string {
   if (m.includes("failed to fetch") || m.includes("network")) return "Nuk u arrit lidhja me serverin. Kontrolloni rrjetin dhe provoni përsëri.";
   if (m.includes("duplicate key")) return "Ky rekord ekziston tashmë.";
   if (m.includes("violates row-level security") || m.includes("row-level security")) return "Nuk keni të drejta për këtë veprim.";
-  if (m.includes("exclusion") || m.includes("appointments_no_overlap")) return "Ky orar sapo u plotësua nga një rezervim tjetër. Zgjidhni një orar tjetër.";
-  if (m.includes("slot")) return message;
+  // double-booking rejected by the engine or by the exclusion constraint
+  if (m.includes("exclusion") || m.includes("appointments_no_overlap") || m.includes("sapo u plotësua") || m.includes("nuk është më i disponueshëm"))
+    return "Ky termin sapo u rezervua nga një përdorues tjetër. Ju lutem zgjidhni një orar tjetër.";
   return message;
 }

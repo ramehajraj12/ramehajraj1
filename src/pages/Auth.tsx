@@ -6,11 +6,11 @@ import { Button, Field, Segmented, TextInput } from "../components/ui";
 import { LogoMark, IShield, ISpark, IKey } from "../components/icons";
 
 const DEMO = [
+  { label: "Super Admin", email: "superadmin@statlab.al", desc: "Akses i plotë" },
   { label: "Admin", email: "admin@statlab.al", desc: "Menaxhon gjithë platformën" },
-  { label: "Super Admin", email: "super@statlab.al", desc: "Akses i plotë" },
-  { label: "Konsulent", email: "arben@statlab.al", desc: "Dr. Arben Hoxha" },
-  { label: "Konsulent 2", email: "teuta@statlab.al", desc: "MSc. Teuta Morina" },
-  { label: "Klient", email: "klient@demo.al", desc: "Portali i klientit" },
+  { label: "Konsulent", email: "arben@statlab.al", desc: "Dr. Arben Krasniqi" },
+  { label: "Konsulent 2", email: "elira@statlab.al", desc: "Dr. Elira Dema" },
+  { label: "Klient", email: "klient@statlab.al", desc: "Arta Gashi — portali i klientit" },
 ];
 
 export default function AuthPage() {

@@ -15,14 +15,6 @@ export function token(len = 24): string {
   return out;
 }
 
-export function hashPw(pw: string): string {
-  // demo-grade one-way hash (real deployment: Supabase Auth handles bcrypt)
-  let h = 5381;
-  const s = "statlab::" + pw;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return "h" + (h >>> 0).toString(36);
-}
-
 // ─── dates ────────────────────────────────────────────────────────────────────
 export function pad(n: number): string { return n < 10 ? "0" + n : String(n); }
 

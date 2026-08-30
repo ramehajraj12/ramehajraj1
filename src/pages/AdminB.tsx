@@ -7,9 +7,10 @@ import {
   saveConsultantServicesAdmin, saveWeeklyAvailability, addBlock, removeBlock,
   listAllServicesAdmin, saveServiceAdmin, listApplications, setApplicationStatus,
   listWaitlist, setWaitlistStatus, listAppointments, listActiveServices,
+  getConsultantServiceRows,
   type AppointmentRow, type ProjectRow,
 } from "../lib/services";
-import { read } from "../lib/db";
+
 import {
   PROJECT_STATUS, TASK_STATUS, SERVICE_CATEGORY, SPECIALIZATIONS, LANGUAGES,
   APPT_STATUS, DAYS_SQ, REVIEW_STATUS,
@@ -434,11 +435,11 @@ export function AdminConsultants() {
       languages: c.languages.join(", "),
     });
     setSvcRows([]);
-    // load actual rows from db read, merged with the full service catalogue
-    read((db) => db.consultant_services.filter((x) => x.consultant_id === c.id)).then((rows) => {
+    // load the consultant's actual offer rows, merged with the full service catalogue
+    getConsultantServiceRows(session, c.id).then((rows) => {
       const merged = (services.data ?? []).map((s) => {
         const r = rows.find((x) => x.service_id === s.id);
-        return { service_id: s.id, price: r?.price ?? s.default_price, duration_minutes: r?.duration_minutes ?? s.default_duration_minutes, is_active: r?.is_active ?? false };
+        return { service_id: s.id, price: Number(r?.price ?? s.default_price), duration_minutes: Number(r?.duration_minutes ?? s.default_duration_minutes), is_active: r?.is_active ?? false };
       });
       setSvcRows(merged);
     });

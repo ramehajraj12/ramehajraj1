@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState, createContext } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import type { Session, User, Role, Lang } from "../types";
-import { getSession as readSession, subscribe } from "./db";
+import { restoreSession, onAuthChange } from "./services";
+import { onChange } from "./repo";
 import { translate } from "./i18n";
 
 interface Toast { id: number; message: string; tone: "ok" | "bad" | "info"; }
@@ -9,10 +10,11 @@ interface Toast { id: number; message: string; tone: "ok" | "bad" | "info"; }
 interface AppCtx {
   session: Session | null;
   user: User | null;
+  authReady: boolean;
   lang: Lang;
   setLang: (l: Lang) => void;
   t: (key: string) => string;
-  tick: number; // bumps on every db mutation → re-render data views
+  tick: number; // bumps on every data mutation → views refetch
   toast: (message: string, tone?: Toast["tone"]) => void;
   toasts: Toast[];
   dismissToast: (id: number) => void;
@@ -21,19 +23,25 @@ interface AppCtx {
 const Ctx = createContext<AppCtx | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSessionState] = useState<Session | null>(() => readSession());
+  const [session, setSessionState] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [tick, setTick] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const idRef = useRef(1);
   const [lang, setLangState] = useState<Lang>(() => {
     const stored = localStorage.getItem("statlab_lang") as Lang | null;
-    return stored && ["sq", "de", "en"].includes(stored) ? stored : (readSession()?.user.preferred_language ?? "sq");
+    return stored && ["sq", "de", "en"].includes(stored) ? stored : "sq";
   });
 
-  useEffect(() => subscribe(() => {
-    setSessionState(readSession());
-    setTick((t) => t + 1);
-  }), []);
+  useEffect(() => {
+    let alive = true;
+    restoreSession()
+      .then((s) => { if (alive) setSessionState(s); })
+      .finally(() => { if (alive) setAuthReady(true); });
+    const offAuth = onAuthChange((s) => { if (alive) setSessionState(s); });
+    const offData = onChange(() => { if (alive) setTick((t) => t + 1); });
+    return () => { alive = false; offAuth(); offData(); };
+  }, []);
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
@@ -50,7 +58,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ session, user: session?.user ?? null, lang, setLang, t, tick, toast, toasts, dismissToast }}>
+    <Ctx.Provider value={{ session, user: session?.user ?? null, authReady, lang, setLang, t, tick, toast, toasts, dismissToast }}>
       {children}
     </Ctx.Provider>
   );
@@ -85,8 +93,9 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): {
 }
 
 export function RequireRole({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
-  const { user } = useApp();
+  const { user, authReady } = useApp();
   const loc = useLocation();
+  if (!authReady) return null; // session restore in progress — never bounce logged-in users
   if (!user) return <Navigate to="/auth" state={{ from: loc.pathname }} replace />;
   if (user.role !== "super_admin" && !roles.includes(user.role)) return <Navigate to={homeForRole(user.role)} replace />;
   return <>{children}</>;

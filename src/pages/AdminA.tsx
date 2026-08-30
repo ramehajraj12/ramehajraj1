@@ -5,7 +5,7 @@ import {
   listAppointments, getSettings, updateSettings, listActivity,
   type AppointmentRow,
 } from "../lib/services";
-import { resetDB as doReset } from "../lib/db";
+
 import { APPT_STATUS } from "../lib/i18n";
 import { fmtDate, fmtDateTime, fmtEuro, relativeTime, todayISO, addDaysISO, cls } from "../lib/utils";
 import {
@@ -384,7 +384,7 @@ export function AdminSettings() {
           </Card>
           <div className="flex items-center gap-3">
             <Button size="lg" loading={busy} onClick={save}>Ruaj cilësimet</Button>
-            <Button variant="danger" onClick={() => { if (confirm("Rivendos të gjitha të dhënat demo?")) { doReset(); toast("Të dhënat u rivendosën."); } }}><IRefresh size={14} /> Rivendos të dhënat demo</Button>
+            <Button variant="danger" onClick={() => toast("Të dhënat demo jetojnë në Supabase — rivendosen duke riaplikuar migracionet (supabase db push).", "info")}><IRefresh size={14} /> Rivendos të dhënat demo</Button>
           </div>
         </div>
       )}

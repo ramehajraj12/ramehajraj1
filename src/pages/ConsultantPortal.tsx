@@ -7,10 +7,9 @@ import {
   consultantClients, listFiles, uploadFile, downloadFile, deleteFile,
   listPayments, listReviews, getConsultantById, saveConsultantAdmin, saveWeeklyAvailability,
   addBlock, removeBlock, toggleGoogleCalendar, listActiveServices,
+  getMyAvailability, myConsultantId,
   type AppointmentRow,
 } from "../lib/services";
-import { read, getDB } from "../lib/db";
-import { dayWindows } from "../lib/availability";
 import {
   APPT_STATUS, PROJECT_STATUS, TASK_STATUS, PAYMENT_STATUS, DAYS_SQ, DAYS_SQ_SHORT,
   SPECIALIZATIONS, LANGUAGES, ANALYSIS_TASK_NAMES,
@@ -686,21 +685,15 @@ export function ConsultantAvailability() {
   const [nb, setNb] = useState({ date: todayISO(), end_date: "", start_time: "", end_time: "", reason: "", type: "meeting" });
 
   useAsync(async () => {
-    const cId = await read((db) => db.consultants.find((c) => c.user_id === session?.user_id));
-    if (!cId) return null;
-    const data = await read((db) => ({
-      windows: db.availability.filter((a) => a.consultant_id === cId.id && a.is_available).map((a) => ({ day: a.day_of_week, start: a.start_time, end: a.end_time })),
-      blocks: db.blocks.filter((b) => b.consultant_id === cId.id),
-      google: db.consultants.find((c) => c.id === cId.id)?.google_calendar_connected ?? false,
-      id: cId.id,
-    }));
+    const data = await getMyAvailability(session);
+    if (!data) return null;
     setWindows(data.windows.sort((a, b) => a.day - b.day));
     setBlocks(data.blocks);
     setGoogle(data.google);
     return data;
   }, [session?.user_id]);
 
-  const myId = async () => read((db) => db.consultants.find((c) => c.user_id === session?.user_id)?.id ?? "");
+  const myId = async () => myConsultantId(session);
 
   const saveWindows = async () => {
     setBusy(true);
@@ -819,8 +812,8 @@ export function ConsultantAvailability() {
 export function ConsultantProfile() {
   const { session, toast } = useApp();
   const me = useAsync(async () => {
-    const cId = await read((db) => db.consultants.find((c) => c.user_id === session?.user_id));
-    return cId ? getConsultantById(cId.id) : null;
+    const cId = await myConsultantId(session);
+    return cId ? getConsultantById(cId) : null;
   }, [session?.user_id]);
   const [f, setF] = useState<{ title: string; bio: string } | null>(null);
   const [busy, setBusy] = useState(false);

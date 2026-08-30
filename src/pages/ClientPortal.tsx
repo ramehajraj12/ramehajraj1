@@ -642,7 +642,7 @@ export function ClientPayments() {
           )}
       </Card>
 
-      <Modal open={!!checkout} onClose={() => !processing && setCheckout(null)} title="Stripe · Pagesë e sigurt">
+      <Modal open={!!checkout} onClose={() => !processing && setCheckout(null)} title="Stripe DEMO · Pagesë e sigurt">
         {checkout && (
           <div className="space-y-4">
             <div className="bg-paper border border-line rounded-xl p-4 flex items-center justify-between">
