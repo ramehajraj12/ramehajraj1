@@ -74,10 +74,12 @@ export async function login(email: string, password: string): Promise<Session> {
 }
 
 export async function registerClient(data: { full_name: string; email: string; phone: string; password: string }): Promise<Session> {
+  // No role is ever sent in signup metadata — the database trigger always
+  // provisions new accounts as 'client'. Roles change only via admin RPCs.
   const { data: up, error } = await sb.auth.signUp({
     email: data.email.trim(),
     password: data.password,
-    options: { data: { full_name: data.full_name.trim(), phone: data.phone, role: "client" } },
+    options: { data: { full_name: data.full_name.trim(), phone: data.phone } },
   });
   if (error) throw new QueryError(mapError(error.message));
   let userId = up.session?.user?.id;
@@ -946,70 +948,93 @@ export async function setWaitlistStatus(session: Session | null, id: string, sta
   emit();
 }
 
-export async function submitApplication(app: {
-  name: string; email: string; phone: string; country: string; education: string;
-  experience: string; spss_experience: string; methodology_experience: string;
-  specializations: string[]; languages: string[]; cv_file: string; linkedin: string; motivation: string;
-}): Promise<void> {
-  const { error } = await sb.from("consultant_applications").insert({ ...app, status: "submitted" });
+export interface ApplicationPayload {
+  name: string; email: string; phone: string; country: string;
+  professional_title: string; education: string; years_experience: number;
+  spss_experience: string; methodology_experience: string; bio: string;
+  specializations: string[]; languages: string[];
+  cv_file: string; linkedin: string; motivation: string;
+}
+
+export type ApplicationStatus = "submitted" | "under_review" | "approved" | "rejected";
+
+export interface ApplicationRow extends ApplicationPayload {
+  id: string;
+  applicant_id: string | null;
+  status: ApplicationStatus;
+  created_at: string;
+}
+
+/** Public/anonymous submission (keeps applicant_id null). */
+export async function submitApplication(app: ApplicationPayload): Promise<void> {
+  const { error } = await sb.from("consultant_applications").insert({ ...app, applicant_id: null, status: "submitted" });
   if (error) throw new QueryError(mapError(error.message));
   emit();
 }
 
-export async function listApplications(session: Session | null) {
-  requireAdmin(session);
-  return selectAll<{
-    id: string; name: string; email: string; phone: string; country: string; education: string;
-    experience: string; spss_experience: string; methodology_experience: string;
-    specializations: string[]; languages: string[]; cv_file: string; linkedin: string;
-    motivation: string; status: "submitted" | "under_review" | "approved" | "rejected"; created_at: string;
-  }>("consultant_applications", (q) => q.order("created_at", { ascending: false }));
+/**
+ * Consultant registration: real Supabase Auth user + client profile +
+ * application linked to the authenticated user. NO consultant role is ever
+ * requested — approval is an admin-only database operation.
+ */
+export async function registerConsultantApplicant(data: ApplicationPayload & { password: string }): Promise<{ needsConfirmation: boolean }> {
+  const { data: up, error } = await sb.auth.signUp({
+    email: data.email.trim(),
+    password: data.password,
+    options: { data: { full_name: data.name.trim() } },
+  });
+  if (error) throw new QueryError(mapError(error.message));
+  let userId = up.session?.user?.id ?? null;
+  if (!userId) {
+    const { data: si, error: e2 } = await sb.auth.signInWithPassword({ email: data.email.trim(), password: data.password });
+    if (!e2 && si.session?.user) userId = si.session.user.id;
+  }
+  if (userId) await rpc("ensure_profile").catch(() => undefined);
+
+  const { error: appErr } = await sb.from("consultant_applications").insert({
+    name: data.name.trim(), email: data.email.trim(), phone: data.phone, country: data.country,
+    professional_title: data.professional_title, education: data.education,
+    years_experience: data.years_experience, spss_experience: data.spss_experience,
+    methodology_experience: data.methodology_experience, bio: data.bio,
+    specializations: data.specializations, languages: data.languages,
+    cv_file: data.cv_file, linkedin: data.linkedin, motivation: data.motivation,
+    applicant_id: userId, status: "submitted",
+  });
+  if (appErr) throw new QueryError(mapError(appErr.message));
+  emit();
+  return { needsConfirmation: !userId };
 }
 
+/** The authenticated user's own latest application (via SECURITY DEFINER RPC). */
+export async function getMyApplication(session: Session | null): Promise<ApplicationRow | null> {
+  requireSession(session);
+  const res = await rpc<ApplicationRow | null>("my_application");
+  return res ?? null;
+}
+
+export async function listApplications(session: Session | null): Promise<ApplicationRow[]> {
+  requireAdmin(session);
+  return selectAll<ApplicationRow>("consultant_applications", (q) => q.order("created_at", { ascending: false }));
+}
+
+/**
+ * Status transitions. 'approved' / 'rejected' run as atomic SECURITY DEFINER
+ * RPCs — the frontend can never promote a role or mint a consultant directly.
+ */
 export async function setApplicationStatus(
   session: Session | null, id: string, status: "under_review" | "approved" | "rejected",
-): Promise<{ invited_email?: string; temp_password?: string } | void> {
+): Promise<void> {
   requireAdmin(session);
-  const apps = await selectAll<{ id: string; name: string; email: string; specializations: string[]; languages: string[]; education: string }>("consultant_applications", (q) => q.eq("id", id));
-  if (!apps.length) throw new QueryError("Aplikimi nuk u gjet.");
-  const app = apps[0];
-  const { error } = await sb.from("consultant_applications").update({ status }).eq("id", id);
-  if (error) throw new QueryError(mapError(error.message));
-  await rpc("log_activity", { p_action: `application.${status}`, p_entity_type: "application", p_entity_id: id, p_metadata: app.name }).catch(() => undefined);
-
-  if (status !== "approved") { emit(); return; }
-
-  // Approval never grants unrestricted access: a scoped consultant account is
-  // provisioned (pending status, hidden from directory) for manual activation.
-  const email = app.email.trim().toLowerCase();
-  const existing = await selectAll<ProfileRow>("profiles", (q) => q.ilike("email", email));
-  const profile = existing[0] ?? null;
-  let tempPassword: string | null = null;
-
-  const hasConsultant = profile?.user_id
-    ? (await selectAll<{ id: string }>("consultants", (q) => q.select("id").eq("user_id", profile.user_id!))).length > 0
-    : false;
-
-  if (profile && !hasConsultant) {
-    const slug = slugify(app.name) + "-" + uid("").slice(0, 5);
-    const { data: cRow, error: cErr } = await sb.from("consultants").insert({
-      user_id: profile.user_id, slug, display_name: app.name,
-      professional_title: "Konsulent", bio: app.education ?? "",
-      specializations: app.specializations ?? [], languages: app.languages ?? ["sq"],
-      status: "pending", is_active: false,
-    }).select().single();
-    if (cErr) throw new QueryError(mapError(cErr.message));
-    await sb.from("consultant_terms").upsert({ consultant_id: (cRow as { id: string }).id, commission_percentage: 20 });
-    if (profile.user_id) await sb.from("profiles").update({ role: "consultant" }).eq("id", profile.user_id);
-  } else if (!profile) {
-    const res = await rpc<{ email: string; temp_password: string }>("admin_create_consultant", {
-      p_email: email, p_name: app.name, p_title: "Konsulent", p_commission: 20,
-      p_specializations: app.specializations ?? [], p_languages: app.languages ?? ["sq"],
-    });
-    tempPassword = res.temp_password;
+  if (status === "approved") {
+    await rpc("admin_approve_application", { p_id: id });
+  } else if (status === "rejected") {
+    await rpc("admin_reject_application", { p_id: id });
+  } else {
+    const { error } = await sb.from("consultant_applications").update({ status }).eq("id", id);
+    if (error) throw new QueryError(mapError(error.message));
+    await rpc("log_activity", { p_action: "application.under_review", p_entity_type: "consultant_application", p_entity_id: id, p_metadata: "" }).catch(() => undefined);
   }
   emit();
-  return { invited_email: email, temp_password: tempPassword ?? undefined };
 }
 
 function slugify(name: string): string {

@@ -13,7 +13,7 @@ import {
 
 import {
   PROJECT_STATUS, TASK_STATUS, SERVICE_CATEGORY, SPECIALIZATIONS, LANGUAGES,
-  APPT_STATUS, DAYS_SQ, REVIEW_STATUS,
+  APPT_STATUS, DAYS_SQ, REVIEW_STATUS, APPLICATION_STATUS, SPEC_LABEL,
 } from "../lib/i18n";
 import { fmtEuro, fmtDate, fmtDateLong, fmtDateTime, fmtDuration, relativeTime, cls, uid, todayISO } from "../lib/utils";
 import {
@@ -671,78 +671,122 @@ export function AdminServices() {
 export function AdminApplications() {
   const { session, toast } = useApp();
   const apps = useAsync(() => listApplications(session), [session?.user_id]);
-  const [invite, setInvite] = useState<{ email: string; pw?: string } | null>(null);
+  const [view, setView] = useState<(typeof apps.data extends (infer T)[] | null ? T : never) | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const setStatus = async (id: string, status: "under_review" | "approved" | "rejected") => {
     setBusyId(id);
     try {
-      const res = await setApplicationStatus(session, id, status);
-      if (status === "approved") {
-        setInvite({ email: res?.invited_email ?? "", pw: res?.temp_password });
-        toast("Aplikimi u aprovua.");
-      } else toast("Statusi u përditësua.");
+      await setApplicationStatus(session, id, status);
+      if (status === "approved") toast("Aplikimi u aprovua — konsulenti u aktivizua dhe u shfaq në direktori.");
+      else if (status === "rejected") toast("Aplikimi u refuzua dhe aplikanti u njoftua.");
+      else toast("Statusi u përditësua.");
+      setView(null);
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusyId(null); }
   };
-
-  const tone = { submitted: "info", under_review: "warn", approved: "ok", rejected: "bad" } as const;
-  const label = { submitted: "I dërguar", under_review: "Në shqyrtim", approved: "Aprovuar", rejected: "Refuzuar" };
 
   return (
     <div>
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink mb-5">Aplikimet e konsulentëve</h1>
       {apps.error && <ErrorState message={apps.error} onRetry={apps.retry} />}
-      {!apps.loading && (apps.data ?? []).length === 0 && <Card><EmptyState icon={<IBriefcase size={22} />} title="Asnjë aplikim" hint="Aplikimet nga /behu-konsulent shfaqen këtu." /></Card>}
+      {!apps.loading && (apps.data ?? []).length === 0 && <Card><EmptyState icon={<IBriefcase size={22} />} title="Asnjë aplikim" hint="Aplikimet e reja nga faqja e regjistrimit dhe /behu-konsulent shfaqen këtu." /></Card>}
       <div className="space-y-4 stagger">
         {(apps.data ?? []).map((a) => (
           <Card key={a.id} className="p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-start gap-3.5">
+              <div className="flex items-start gap-3.5 min-w-0">
                 <Avatar name={a.name} size={46} />
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-display font-bold text-ink">{a.name}</p>
-                    <Badge tone={tone[a.status]}>{label[a.status]}</Badge>
+                    <Badge tone={APPLICATION_STATUS[a.status].tone as never}>{APPLICATION_STATUS[a.status].label}</Badge>
+                    {a.applicant_id
+                      ? <Badge tone="teal">Ka llogari</Badge>
+                      : <Badge tone="mute">Pa llogari</Badge>}
                   </div>
-                  <p className="text-[12.5px] text-mute mt-0.5">{a.email} · {a.country} · {fmtDate(a.created_at.slice(0, 10))}</p>
-                  <p className="text-[12.5px] text-ink-2 mt-1.5 max-w-2xl">{a.education}</p>
+                  <p className="text-[12.5px] text-mute mt-0.5">{a.email} · {a.country || "—"} · {fmtDate(a.created_at.slice(0, 10))}</p>
+                  <p className="text-[12.5px] text-ink-2 mt-1.5 max-w-2xl">{a.professional_title || a.education}</p>
                 </div>
               </div>
-              {(a.status === "submitted" || a.status === "under_review") && (
-                <div className="flex gap-2">
-                  {a.status === "submitted" && <Button variant="outline" size="sm" loading={busyId === a.id} onClick={() => setStatus(a.id, "under_review")}>Në shqyrtim</Button>}
-                  <Button size="sm" className="!bg-ok hover:!bg-[#126b3d]" loading={busyId === a.id} onClick={() => setStatus(a.id, "approved")}><ICheck size={13} /> Aprovo</Button>
-                  <Button variant="danger" size="sm" loading={busyId === a.id} onClick={() => setStatus(a.id, "rejected")}><IX size={13} /> Refuzo</Button>
-                </div>
-              )}
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="outline" size="sm" onClick={() => setView(a)}>Shiko aplikimin</Button>
+                {(a.status === "submitted" || a.status === "under_review") && (
+                  <>
+                    {a.status === "submitted" && <Button variant="ghost" size="sm" loading={busyId === a.id} onClick={() => setStatus(a.id, "under_review")}>Në shqyrtim</Button>}
+                    <Button size="sm" className="!bg-ok hover:!bg-[#126b3d]" loading={busyId === a.id} onClick={() => setStatus(a.id, "approved")}><ICheck size={13} /> Aprovo</Button>
+                    <Button variant="danger" size="sm" loading={busyId === a.id} onClick={() => setStatus(a.id, "rejected")}><IX size={13} /> Refuzo</Button>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="grid md:grid-cols-2 gap-x-8 gap-y-1 mt-4 pt-4 border-t border-line text-[13px]">
-              <p><span className="text-mute">Përvoja:</span> <b>{a.experience || "—"}</b></p>
-              <p><span className="text-mute">SPSS:</span> <b>{a.spss_experience || "—"}</b></p>
-              <p><span className="text-mute">Metodologji:</span> <b>{a.methodology_experience || "—"}</b></p>
-              <p><span className="text-mute">CV:</span> <b className="font-mono text-[12px]">{a.cv_file || "—"}</b> {a.linkedin && <a className="text-primary-600 underline text-[12px] ml-2" href={`https://${a.linkedin}`} target="_blank" rel="noreferrer">LinkedIn</a>}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {a.specializations.map((s) => <span key={s} className="text-[11px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2 py-1">{SPECIALIZATIONS[s] ?? s}</span>)}
+            <div className="flex flex-wrap gap-1.5 mt-3.5">
+              {a.specializations.slice(0, 6).map((s) => <span key={s} className="text-[11px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2 py-1">{SPEC_LABEL[s] ?? s}</span>)}
+              {a.specializations.length > 6 && <span className="text-[11px] font-semibold text-mute px-1 py-1">+{a.specializations.length - 6}</span>}
               {a.languages.map((l) => <span key={l} className="text-[11px] font-semibold bg-paper border border-line rounded-md px-2 py-1">{LANGUAGES[l] ?? l}</span>)}
             </div>
-            <p className="text-[13px] text-ink-2 mt-3 italic">“{a.motivation}”</p>
           </Card>
         ))}
       </div>
 
-      <Modal open={!!invite} onClose={() => setInvite(null)} title="Ftesa u krijua">
-        {invite && (
-          <div className="space-y-3">
-            <p className="text-[13.5px] text-mute">Llogaria e konsulentit u krijua me të drejta të kufizuara. Aktivizimi në direktori bëhet manualisht te <b className="text-ink">Konsulentët</b>.</p>
-            <div className="bg-paper border border-line rounded-xl p-4 font-mono text-[13px]">
-              <p>Email: <b>{invite.email}</b></p>
-              {invite.pw && <p>Fjalëkalimi i përkohshëm: <b className="text-primary-700">{invite.pw}</b></p>}
+      <Drawer open={!!view} onClose={() => setView(null)} title={view ? `Aplikimi — ${view.name}` : ""} width={600}>
+        {view && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone={APPLICATION_STATUS[view.status].tone as never}>{APPLICATION_STATUS[view.status].label}</Badge>
+              {view.applicant_id ? <Badge tone="teal">Llogari e lidhur</Badge> : <Badge tone="warn">Pa llogari — aprovimi kërkon regjistrim</Badge>}
+              <span className="text-[12px] text-mute font-mono">{fmtDateTime(view.created_at)}</span>
             </div>
-            <Button className="w-full" onClick={() => setInvite(null)}>E kuptova</Button>
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Personale</p>
+              <KV k="Email" v={view.email} />
+              <KV k="Telefoni" v={view.phone || "—"} />
+              <KV k="Shteti" v={view.country || "—"} />
+              {view.linkedin && <KV k="LinkedIn" v={view.linkedin} />}
+              <KV k="CV" v={view.cv_file || "—"} />
+            </div>
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Profesionale</p>
+              <KV k="Titulli" v={view.professional_title || "—"} />
+              <KV k="Edukimi" v={view.education || "—"} />
+              <KV k="Vitet e përvojës" v={String(view.years_experience || 0)} />
+              <KV k="Përvoja me SPSS" v={view.spss_experience || "—"} />
+              <KV k="Përvoja në metodologji" v={view.methodology_experience || "—"} />
+            </div>
+            {view.bio && (
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Biografia</p>
+                <p className="text-[13.5px] text-ink-2 leading-relaxed">{view.bio}</p>
+              </div>
+            )}
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Specializimet</p>
+              <div className="flex flex-wrap gap-1.5">
+                {view.specializations.map((s) => <span key={s} className="text-[11.5px] font-semibold bg-primary-50 text-primary-800 rounded-md px-2 py-1">{SPEC_LABEL[s] ?? s}</span>)}
+              </div>
+            </div>
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Gjuhët</p>
+              <div className="flex flex-wrap gap-1.5">
+                {view.languages.map((l) => <span key={l} className="text-[11.5px] font-semibold bg-paper border border-line rounded-md px-2 py-1">{LANGUAGES[l] ?? l}</span>)}
+              </div>
+            </div>
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Motivimi</p>
+              <p className="text-[13.5px] text-ink-2 italic leading-relaxed">“{view.motivation || "—"}”</p>
+            </div>
+            {(view.status === "submitted" || view.status === "under_review") && (
+              <div className="border-t border-line pt-4 space-y-3">
+                <p className="text-[12.5px] text-mute">Aprovimi aktivizon profilin e konsulentit, krijon faqen publike në direktori dhe i jep akses në Portalin e Konsulentit — gjithçka përmes një operacioni të vetëm të sigurt në bazën e të dhënave.</p>
+                <div className="flex gap-2">
+                  {view.status === "submitted" && <Button variant="outline" className="flex-1" loading={busyId === view.id} onClick={() => setStatus(view.id, "under_review")}>Në shqyrtim</Button>}
+                  <Button className="flex-1 !bg-ok hover:!bg-[#126b3d]" loading={busyId === view.id} onClick={() => setStatus(view.id, "approved")}><ICheck size={14} /> Aprovo</Button>
+                  <Button variant="danger" className="flex-1" loading={busyId === view.id} onClick={() => setStatus(view.id, "rejected")}><IX size={14} /> Refuzo</Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
-      </Modal>
+      </Drawer>
     </div>
   );
 }

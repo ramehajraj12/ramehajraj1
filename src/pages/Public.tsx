@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useApp, useAsync } from "../lib/store";
 import { listPublicConsultants, getConsultantBySlug, listActiveServices, submitApplication, listReviews } from "../lib/services";
-import { SPECIALIZATIONS, LANGUAGES, SERVICE_CATEGORY, DAYS_SQ } from "../lib/i18n";
+import { SPECIALIZATIONS, SPECIALIZATION_OPTIONS, LANGUAGES, SERVICE_CATEGORY, DAYS_SQ } from "../lib/i18n";
 import { fmtEuro, fmtDate, fmtDuration, daysUntil, cls } from "../lib/utils";
 import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Field, Select, SearchInput, Skeleton, Stars, TableSkeleton, TextArea, TextInput, Toggle } from "../components/ui";
 import { IArrowR, ICheck, IClock, IGraduation, ISpark, IUser, ICal, IShield, ISigma } from "../components/icons";
@@ -239,10 +239,12 @@ export function ConsultantProfile() {
 // ─── Become a consultant ─────────────────────────────────────────────────────
 export function BecomeConsultant() {
   const { toast } = useApp();
-  const [f, setF] = useState({
-    name: "", email: "", phone: "", country: "", education: "", experience: "",
-    spss_experience: "", methodology_experience: "", linkedin: "", motivation: "", cv_file: "",
-  });
+  const EMPTY = {
+    name: "", email: "", phone: "", country: "", professional_title: "", education: "",
+    years_experience: 0, spss_experience: "", methodology_experience: "", bio: "",
+    linkedin: "", motivation: "", cv_file: "",
+  };
+  const [f, setF] = useState(EMPTY);
   const [specs, setSpecs] = useState<string[]>([]);
   const [langs, setLangs] = useState<string[]>(["sq"]);
   const [sending, setSending] = useState(false);
@@ -256,8 +258,8 @@ export function BecomeConsultant() {
     setSending(true);
     try {
       await submitApplication({ ...f, specializations: specs, languages: langs });
-      toast("Aplikimi u dërgua me sukses. Ekipi do t'ju kontaktojë brenda 3 ditësh.");
-      setF({ name: "", email: "", phone: "", country: "", education: "", experience: "", spss_experience: "", methodology_experience: "", linkedin: "", motivation: "", cv_file: "" });
+      toast("Aplikimi u dërgua me sukses. Do të njoftoheni pasi administratori ta shqyrtojë.");
+      setF(EMPTY);
       setSpecs([]); setLangs(["sq"]);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Gabim gjatë dërgimit.");
@@ -305,14 +307,18 @@ export function BecomeConsultant() {
             <Field label="Telefoni"><TextInput value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="+383…" /></Field>
             <Field label="Shteti"><TextInput value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })} placeholder="Kosovë" /></Field>
           </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Titulli profesional"><TextInput value={f.professional_title} onChange={(e) => setF({ ...f, professional_title: e.target.value })} placeholder="p.sh. Statistikan i aplikuar" /></Field>
+            <Field label="Vitet e përvojës"><TextInput type="number" value={f.years_experience} onChange={(e) => setF({ ...f, years_experience: +e.target.value })} /></Field>
+          </div>
           <Field label="Edukimi" required><TextInput value={f.education} onChange={(e) => setF({ ...f, education: e.target.value })} placeholder="Master në Statistika të Aplikuara — Universiteti…" /></Field>
-          <Field label="Përvoja profesionale"><TextArea value={f.experience} onChange={(e) => setF({ ...f, experience: e.target.value })} placeholder="Vitet, rolet, projektet hulumtuese…" /></Field>
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Përvoja me SPSS"><TextArea value={f.spss_experience} onChange={(e) => setF({ ...f, spss_experience: e.target.value })} /></Field>
             <Field label="Përvoja në metodologji"><TextArea value={f.methodology_experience} onChange={(e) => setF({ ...f, methodology_experience: e.target.value })} /></Field>
           </div>
+          <Field label="Biografi e shkurtër"><TextArea value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value })} placeholder="Prezantim i shkurtër profesional…" /></Field>
           <Field label="Specializimet" required>
-            <div className="flex flex-wrap gap-2">{Object.entries(SPECIALIZATIONS).map(([k, v]) => chip(specs, setSpecs, k, v))}</div>
+            <div className="flex flex-wrap gap-2">{SPECIALIZATION_OPTIONS.map((o) => chip(specs, setSpecs, o.key, o.label))}</div>
           </Field>
           <Field label="Gjuhët">
             <div className="flex flex-wrap gap-2">{Object.entries(LANGUAGES).map(([k, v]) => chip(langs, setLangs, k, v))}</div>

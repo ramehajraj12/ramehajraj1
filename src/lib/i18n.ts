@@ -159,6 +159,35 @@ export const SPECIALIZATIONS: Record<string, string> = {
   interpretation: "Interpretimi statistikor",
 };
 
+/** Canonical specialization values (stored in DB, matched by the booking engine) + Albanian labels. */
+export const SPECIALIZATION_OPTIONS: { key: string; label: string }[] = [
+  { key: "SPSS", label: "SPSS" },
+  { key: "Descriptive Statistics", label: "Statistikë përshkruese" },
+  { key: "Reliability Analysis", label: "Analiza e besueshmërisë" },
+  { key: "Correlation", label: "Korelacioni" },
+  { key: "ANOVA", label: "ANOVA" },
+  { key: "Regression", label: "Regresioni" },
+  { key: "Logistic Regression", label: "Regresioni logjistik" },
+  { key: "Factor Analysis", label: "Analiza faktoriale" },
+  { key: "Non-Parametric Statistics", label: "Testet joparametrike" },
+  { key: "Research Methodology", label: "Metodologji e hulumtimit" },
+  { key: "Survey Design", label: "Dizajni i anketës" },
+  { key: "Questionnaire Development", label: "Zhvillimi i pyetësorit" },
+  { key: "Master Thesis Support", label: "Mbështetje për master" },
+  { key: "PhD Research Support", label: "Mbështetje për doktoraturë" },
+  { key: "APA Reporting", label: "Raportimi APA" },
+  { key: "Data Cleaning", label: "Pastrimi i të dhënave" },
+];
+
+export const SPEC_LABEL: Record<string, string> = Object.fromEntries(SPECIALIZATION_OPTIONS.map((o) => [o.key, o.label]));
+
+export const APPLICATION_STATUS: Record<string, { label: string; tone: "warn" | "ok" | "mute" | "bad" | "info" | "teal" }> = {
+  submitted: { label: "Në pritje të shqyrtimit", tone: "info" },
+  under_review: { label: "Në shqyrtim", tone: "warn" },
+  approved: { label: "Aprovuar", tone: "ok" },
+  rejected: { label: "Refuzuar", tone: "bad" },
+};
+
 export const APPT_STATUS: Record<string, { label: string; tone: "warn" | "ok" | "mute" | "bad" | "info" | "teal" }> = {
   pending: { label: "Në pritje", tone: "warn" },
   confirmed: { label: "I konfirmuar", tone: "ok" },
