@@ -43,6 +43,7 @@ export function ClientDashboard() {
   const files = useAsync(() => listFiles(session), [session?.user_id]);
   const payments = useAsync(() => listPayments(session), [session?.user_id]);
   const reviewable = useAsync(() => myReviewableAppointments(session), [session?.user_id]);
+  const [sel, setSel] = useState<AppointmentRow | null>(null);
 
   const today = todayISO();
   const next = (appts.data ?? []).find((a) => a.date >= today && a.status === "confirmed") ?? (appts.data ?? [])[0];
@@ -121,7 +122,7 @@ export function ClientDashboard() {
         <Card className="p-5">
           <SectionHead title="Terminet e ardhshme" to="/client/terminet" />
           {appts.loading ? <TableSkeleton rows={3} /> : (
-            <MiniAgenda list={(appts.data ?? []).slice(0, 3)} onEventClick={() => {}} empty="Asnjë termin i ardhshëm." />
+            <MiniAgenda list={(appts.data ?? []).slice(0, 3)} onEventClick={setSel} empty="Asnjë termin i ardhshëm." />
           )}
         </Card>
         <Card className="p-5">
@@ -144,6 +145,8 @@ export function ClientDashboard() {
             )}
         </Card>
       </div>
+
+      <ClientAppointmentDrawer appt={sel} onClose={() => setSel(null)} />
     </div>
   );
 }
@@ -224,55 +227,78 @@ export function ClientAppointments() {
         ))}
       </div>
 
-      <Drawer open={!!sel} onClose={() => setSel(null)} title={sel ? `Termini ${sel.reference}` : ""}>
-        {sel && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Avatar name={sel.consultant_name} size={46} />
-              <div>
-                <p className="font-display font-bold text-ink">{sel.consultant_name}</p>
-                <p className="text-[12.5px] text-mute">{sel.service_name}</p>
-              </div>
-              <Badge tone={APPT_STATUS[sel.status].tone} className="ml-auto">{APPT_STATUS[sel.status].label}</Badge>
-            </div>
-            <Card className="p-4">
-              <KV k="Data" v={`${fmtDateLong(sel.date)} · ${sel.start_time}–${sel.end_time}`} />
-              <KV k="Zgjatja" v={fmtDuration(sel.duration_minutes)} />
-              <KV k="Çmimi" v={fmtEuro(sel.price)} />
-              <KV k="Gjuha" v={LANGUAGES[sel.language] ?? sel.language} />
-              <KV k="Referenca" v={sel.reference} mono />
-              {sel.research_topic && <KV k="Tema" v={sel.research_topic} />}
-              {sel.required_analysis && <KV k="Analiza" v={sel.required_analysis} />}
-            </Card>
-            {sel.meeting_url && (
-              <a href={sel.meeting_url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 h-11 rounded-lg bg-primary-600 text-primary-50 font-bold text-sm hover:bg-primary-700 transition-colors">
-                <IVideo size={16} /> Hap Google Meet
-              </a>
-            )}
-            <Link to={`/menaxho/${sel.manage_token}`} className="block">
-              <Button variant="outline" className="w-full"><ILink size={14} /> Rizhvendos ose anulo</Button>
-            </Link>
-            {sel.completion && (
-              <div>
-                <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Përmbledhja e konsulencës</p>
-                <Card className="p-4 space-y-3">
-                  <KV k="Përmbledhja" v={sel.completion.summary} />
-                  <KV k="Analizat" v={sel.completion.analyses_performed} />
-                  <KV k="Gjetjet" v={sel.completion.findings} />
-                  <KV k="Rekomandimet" v={sel.completion.recommendations} />
-                  <KV k="Hapat e tjerë" v={sel.completion.next_steps} />
-                  {sel.completion.follow_up !== "none" && (
-                    <KV k="Ndjekja" v={`${sel.completion.follow_up === "required" ? "E domosdoshme" : "E rekomanduar"}${sel.completion.follow_up_timeframe ? ` — ${sel.completion.follow_up_timeframe}` : ""}`} />
-                  )}
-                </Card>
-              </div>
-            )}
-          </div>
-        )}
-      </Drawer>
+      <ClientAppointmentDrawer appt={sel} onClose={() => setSel(null)} />
 
       <ReviewModal appt={reviewFor} onClose={() => { setReviewFor(null); reviewable.retry(); appts.retry(); }} />
     </div>
+  );
+}
+
+/**
+ * Shared client appointment-detail drawer — used by the dashboard, the
+ * appointments list and project details. Reads only data already loaded by
+ * the caller (no extra queries); access is scoped by RLS on `appointments`.
+ */
+export function ClientAppointmentDrawer({ appt, onClose }: { appt: AppointmentRow | null; onClose: () => void }) {
+  if (!appt) return null;
+  const pay =
+    appt.payment_status === "paid" ? { label: "E paguar", tone: "ok" as const }
+    : appt.payment_status === "deposit_paid" ? { label: "Depozitë e paguar", tone: "teal" as const }
+    : appt.payment_status === "refunded" ? { label: "E rikthyer", tone: "bad" as const }
+    : { label: "E papaguar", tone: "warn" as const };
+  return (
+    <Drawer open onClose={onClose} title={`Termini ${appt.reference}`}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Avatar name={appt.consultant_name} size={46} />
+          <div>
+            <p className="font-display font-bold text-ink">{appt.consultant_name}</p>
+            <p className="text-[12.5px] text-mute">{appt.service_name}</p>
+          </div>
+          <Badge tone={APPT_STATUS[appt.status].tone} className="ml-auto">{APPT_STATUS[appt.status].label}</Badge>
+        </div>
+        <Card className="p-4">
+          <KV k="Referenca" v={appt.reference} mono />
+          <KV k="Konsulenti" v={appt.consultant_name} />
+          <KV k="Shërbimi" v={appt.service_name} />
+          <KV k="Data" v={`${fmtDateLong(appt.date)} · ${appt.start_time}–${appt.end_time}`} />
+          <KV k="Zgjatja" v={fmtDuration(appt.duration_minutes)} />
+          <KV k="Çmimi" v={fmtEuro(appt.price)} />
+          <KV k="Pagesa" v={<Badge tone={pay.tone}>{pay.label}</Badge>} />
+          <KV k="Gjuha" v={LANGUAGES[appt.language] ?? appt.language} />
+          {appt.research_topic && <KV k="Tema" v={appt.research_topic} />}
+          {appt.required_analysis && <KV k="Analiza" v={appt.required_analysis} />}
+        </Card>
+        {appt.meeting_url && (
+          <a href={appt.meeting_url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 h-11 rounded-lg bg-primary-600 text-primary-50 font-bold text-sm hover:bg-primary-700 transition-colors">
+            <IVideo size={16} /> Hap Google Meet
+          </a>
+        )}
+        {appt.project_id && (
+          <Link to={`/client/projektet/${appt.project_id}`}>
+            <Button variant="outline" className="w-full"><IFolder size={14} /> Shiko projektin</Button>
+          </Link>
+        )}
+        <Link to={`/menaxho/${appt.manage_token}`} className="block">
+          <Button variant="outline" className="w-full"><ILink size={14} /> Rizhvendos ose anulo</Button>
+        </Link>
+        {appt.completion && (
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-wider text-mute mb-2">Përmbledhja e konsulencës</p>
+            <Card className="p-4 space-y-3">
+              <KV k="Përmbledhja" v={appt.completion.summary} />
+              <KV k="Analizat" v={appt.completion.analyses_performed} />
+              <KV k="Gjetjet" v={appt.completion.findings} />
+              <KV k="Rekomandimet" v={appt.completion.recommendations} />
+              <KV k="Hapat e tjerë" v={appt.completion.next_steps} />
+              {appt.completion.follow_up !== "none" && (
+                <KV k="Ndjekja" v={`${appt.completion.follow_up === "required" ? "E domosdoshme" : "E rekomanduar"}${appt.completion.follow_up_timeframe ? ` — ${appt.completion.follow_up_timeframe}` : ""}`} />
+              )}
+            </Card>
+          </div>
+        )}
+      </div>
+    </Drawer>
   );
 }
 
@@ -372,6 +398,7 @@ export function ClientProjectDetail({ id }: { id: string }) {
   const { session } = useApp();
   const detail = useAsync(() => getProjectDetail(session, id), [session?.user_id, id]);
   const [tab, setTab] = useState("overview");
+  const [sel, setSel] = useState<AppointmentRow | null>(null);
   const d = detail.data;
 
   if (detail.loading) return <div className="space-y-4"><Skeleton className="h-28 rounded-xl" /><Skeleton className="h-72 rounded-xl" /></div>;
@@ -468,10 +495,12 @@ export function ClientProjectDetail({ id }: { id: string }) {
         )}
         {tab === "appointments" && (
           <Card className="p-5 anim-fade-in">
-            <MiniAgenda list={d.appointments} onEventClick={() => {}} empty="Asnjë termin i lidhur me këtë projekt." />
+            <MiniAgenda list={d.appointments} onEventClick={setSel} empty="Asnjë termin i lidhur me këtë projekt." />
           </Card>
         )}
       </div>
+
+      <ClientAppointmentDrawer appt={sel} onClose={() => setSel(null)} />
     </div>
   );
 }

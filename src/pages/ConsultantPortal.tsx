@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { useApp, useAsync } from "../lib/store";
 import {
   consultantDashboard, listAppointments, confirmAppointment, completeAppointment, markNoShow,
-  cancelAppointmentByStaff, rescheduleByStaff, listProjects, getProjectDetail, saveTask,
+  cancelAppointmentByStaff, rescheduleByStaff, rescheduleByConsultant, cancelByConsultant,
+  listProjects, getProjectDetail, saveTask,
   updateProjectStatus,
   consultantClients, listFiles, uploadFile, downloadFile, deleteFile,
   listPayments, listReviews, getConsultantById, saveConsultantAdmin, saveWeeklyAvailability,
@@ -127,6 +128,11 @@ export function AppointmentDrawer({ appt, onClose, onChanged, showClientInfo = t
 
   if (!appt) return null;
   const isStaff = session?.user.role === "admin" || session?.user.role === "super_admin" || session?.user.role === "consultant";
+  // consultants operate on their own appointments through ownership-scoped RPCs
+  const isConsultant = session?.user.role === "consultant";
+  const doCancel = () => isConsultant
+    ? cancelByConsultant(session, appt.id, "Anuluar nga konsulenti")
+    : cancelAppointmentByStaff(session, appt.id, "Anuluar nga stafi");
 
   const act = async (fn: () => Promise<unknown>, msg: string) => {
     setConfirming(true);
@@ -209,7 +215,7 @@ export function AppointmentDrawer({ appt, onClose, onChanged, showClientInfo = t
         <p className="text-[13.5px] text-mute">Anulo <b className="text-ink">{appt.reference}</b> — {fmtDateLong(appt.date)} në {appt.start_time}?</p>
         <div className="flex gap-3 mt-5">
           <Button variant="ghost" onClick={() => setCancelOpen(false)}>Kthehu</Button>
-          <Button variant="danger" className="flex-1" loading={confirming} onClick={() => act(() => cancelAppointmentByStaff(session, appt.id, "Anuluar nga stafi"), "Termini u anulua.")}>Po, anulo</Button>
+          <Button variant="danger" className="flex-1" loading={confirming} onClick={() => act(() => doCancel(), "Termini u anulua.")}>Po, anulo</Button>
         </div>
       </Modal>
     </>
@@ -269,11 +275,14 @@ function RescheduleModal({ appt, onClose, onDone }: { appt: AppointmentRow | nul
     return () => { alive = false; };
   }, [date, appt]);
 
+  const isConsultant = session?.user.role === "consultant";
   const submit = async () => {
     if (!appt || !date || !time) { toast("Zgjidhni datën dhe orën.", "bad"); return; }
     setBusy(true);
     try {
-      await rescheduleByStaff(session, appt.id, date, time);
+      // consultants use the ownership-scoped RPC; staff keep the staff RPC
+      if (isConsultant) await rescheduleByConsultant(session, appt.id, date, time);
+      else await rescheduleByStaff(session, appt.id, date, time);
       toast("Termini u rizhvendos.");
       onDone();
     } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setBusy(false); }
@@ -412,6 +421,7 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
   const [taskModal, setTaskModal] = useState<null | { id?: string; name: string; status: string; progress: number; notes: string; assigned_consultant_id: string | null }>(null);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [selAppt, setSelAppt] = useState<AppointmentRow | null>(null);
   const d = detail.data;
 
   // The signed-in consultant's own consultants row ("" if staff-only / not linked).
@@ -524,7 +534,7 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
           </Card>
           <Card className="p-5">
             <h2 className="font-display font-bold text-ink mb-3.5">Terminet e lidhura</h2>
-            <MiniAgenda list={d.appointments} onEventClick={() => {}} empty="Asnjë termin." />
+            <MiniAgenda list={d.appointments} onEventClick={setSelAppt} empty="Asnjë termin." />
           </Card>
         </div>
       </div>
@@ -555,6 +565,10 @@ export function ConsultantProjectDetail({ id }: { id: string }) {
           </div>
         )}
       </Modal>
+
+      {/* linked appointment detail — same drawer used across the consultant portal;
+          actions inside it are ownership-scoped server-side */}
+      <AppointmentDrawer appt={selAppt} onClose={() => setSelAppt(null)} onChanged={detail.retry} />
     </div>
   );
 }

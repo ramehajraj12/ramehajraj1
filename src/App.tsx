@@ -1,6 +1,8 @@
-import React from "react";
-import { HashRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import React, { useEffect } from "react";
+import { HashRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { AppProvider, useApp, RequireRole } from "./lib/store";
+import { RECOVERY_MARKER } from "./lib/supabase";
+import ResetPassword from "./pages/ResetPassword";
 import { PublicLayout } from "./components/layout";
 import { cls } from "./lib/utils";
 import { ICheck, IWarn, IInfo, IX } from "./components/icons";
@@ -47,6 +49,21 @@ function Public({ children }: { children: React.ReactNode }) {
   return <PublicLayout>{children}</PublicLayout>;
 }
 
+/** Routes a user arriving via a password-recovery link to /reset-password. */
+function RecoveryWatcher() {
+  const nav = useNavigate();
+  const loc = useLocation();
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (sessionStorage.getItem(RECOVERY_MARKER) && loc.pathname !== "/reset-password") {
+        nav("/reset-password", { replace: true });
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [nav, loc.pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <AppProvider>
@@ -62,6 +79,7 @@ export default function App() {
           <Route path="/rezervo" element={<Public><Booking /></Public>} />
           <Route path="/menaxho/:token" element={<Public><ManageBooking /></Public>} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           {/* applicant status — clients with a pending application AND approved consultants */}
           <Route path="/aplikimi-im" element={<RequireRole roles={["client", "consultant"]}><MyApplicationPage /></RequireRole>} />
 

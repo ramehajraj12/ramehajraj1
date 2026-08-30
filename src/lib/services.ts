@@ -102,6 +102,32 @@ export function logout(): void {
   void sb.auth.signOut();
 }
 
+// ── Password recovery (real Supabase flow) ──────────────────────────────────
+/** Redirect target for recovery links — always the current deployed origin
+ *  (never a hardcoded host), pointing at the app root where the session is
+ *  detected and the user is routed to /reset-password. */
+export function passwordResetRedirectUrl(): string {
+  const base = `${window.location.origin}${window.location.pathname}`;
+  return base.endsWith("/") ? base : base + "/";
+}
+
+/** Requests a recovery email. Supabase does not reveal whether the account exists. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: passwordResetRedirectUrl(),
+  });
+  if (error) throw new QueryError(mapError(error.message));
+}
+
+/** Sets the new password using the active recovery session. */
+export async function setNewPassword(newPassword: string): Promise<Session> {
+  const { data } = await sb.auth.getSession();
+  if (!data.session?.user) throw new QueryError("Linku i rikuperimit është i pavlefshëm ose ka skaduar. Kërkoni një link të ri.");
+  const { error } = await sb.auth.updateUser({ password: newPassword });
+  if (error) throw new QueryError(mapError(error.message));
+  return sessionForAuthUser(data.session.user.id);
+}
+
 /** Raised when a valid auth session exists but the profile cannot be fetched
  *  because of a temporary network/server failure — NOT a logout. */
 export class ProfileUnavailableError extends Error {}
@@ -486,6 +512,28 @@ export async function rescheduleByStaff(session: Session | null, id: string, new
   });
   emit();
   return { date: res.date, start_time: hhmm(res.start_time) } as unknown as Appointment;
+}
+
+/**
+ * Consultant self-service: reschedule an OWN appointment.
+ * Server-side (reschedule_by_consultant): auth.uid() → consultants.user_id →
+ * appointment.consultant_id, slot re-validation (availability, blocks, buffer,
+ * notice) and double-booking prevention — identical guarantees to the engine.
+ */
+export async function rescheduleByConsultant(session: Session | null, id: string, newDate: string, newStart: string): Promise<Appointment> {
+  requireSession(session);
+  const res = await rpc<{ date: string; start_time: string }>("reschedule_by_consultant", {
+    p_id: id, p_date: newDate, p_start: newStart,
+  });
+  emit();
+  return { date: res.date, start_time: hhmm(res.start_time) } as unknown as Appointment;
+}
+
+/** Consultant self-service: cancel an OWN appointment (record kept, status flipped). */
+export async function cancelByConsultant(session: Session | null, id: string, reason: string): Promise<void> {
+  requireSession(session);
+  await rpc("cancel_by_consultant", { p_id: id, p_reason: reason ?? "" });
+  emit();
 }
 
 export async function cancelByToken(manageToken: string, reason: string): Promise<void> {

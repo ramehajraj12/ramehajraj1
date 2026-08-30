@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApp, homeForRole } from "../lib/store";
-import { login, registerClient, registerConsultantApplicant, getMyApplication } from "../lib/services";
+import { login, registerClient, registerConsultantApplicant, getMyApplication, requestPasswordReset } from "../lib/services";
 import { Button, Field, Segmented, TextArea, TextInput } from "../components/ui";
 import { LogoMark, IShield, IUser, IGraduation, IArrowR, IBriefcase } from "../components/icons";
 import { SPECIALIZATION_OPTIONS, LANGUAGES } from "../lib/i18n";
 import { cls } from "../lib/utils";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot";
 type RegRole = "select" | "client" | "consultant";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,6 +54,7 @@ export default function AuthPage() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmSent, setConfirmSent] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
 
   // login
   const [email, setEmail] = useState("");
@@ -186,8 +187,20 @@ export default function AuthPage() {
     } finally { setBusy(false); }
   };
 
-  const forgotPassword = () => {
-    toast("Rikuperimi i fjalëkalimit do të aktivizohet së shpejti. Kontaktoni suportin nëse keni nevojë.", "info");
+  // ── FORGOT PASSWORD (real Supabase recovery) ──────────────────────────────
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr("");
+    const em = validateEmail(email);
+    if (em) { setErr(em); return; }
+    setBusy(true);
+    try {
+      await requestPasswordReset(email);
+      setForgotSent(true);
+    } catch (ex) {
+      console.error("Password reset request failed:", ex);
+      setErr(ex instanceof Error ? ex.message : "Kërkesa dështoi. Provoni përsëri.");
+    } finally { setBusy(false); }
   };
 
   // ── RENDER ──────────────────────────────────────────────────────────────────
@@ -238,24 +251,28 @@ export default function AuthPage() {
           ) : (
             <>
               <h2 className="font-display text-2xl font-bold text-ink">
-                {mode === "login" ? "Kyçu në StatLab" : "Krijoni llogarinë tuaj"}
+                {mode === "login" ? "Kyçu në StatLab" : mode === "forgot" ? "Rikuperoni fjalëkalimin" : "Krijoni llogarinë tuaj"}
               </h2>
               <p className="text-mute text-sm mt-1.5">
                 {mode === "login"
                   ? "Qasuni në portalin tuaj sipas rolit."
-                  : regRole === "select"
-                    ? "Si dëshironi të regjistroheni?"
-                    : regRole === "client"
-                      ? "Rezervoni konsulenca dhe ndiqni projektet tuaja nga një portal i vetëm."
-                      : "Aplikoni për t'u bërë konsulent — aplikimi shqyrtohet nga ekipi para aktivizimit."}
+                  : mode === "forgot"
+                    ? "Shkruani email-in e llogarisë dhe do t'ju dërgojmë një link për të vendosur një fjalëkalim të ri."
+                    : regRole === "select"
+                      ? "Si dëshironi të regjistroheni?"
+                      : regRole === "client"
+                        ? "Rezervoni konsulenca dhe ndiqni projektet tuaja nga një portal i vetëm."
+                        : "Aplikoni për t'u bërë konsulent — aplikimi shqyrtohet nga ekipi para aktivizimit."}
               </p>
 
-              <div className="mt-6">
-                <Segmented
-                  options={[{ value: "login", label: "Kycu" }, { value: "register", label: "Regjistrohu" }]}
-                  value={mode} onChange={(m) => switchMode(m as Mode)}
-                />
-              </div>
+              {mode !== "forgot" && (
+                <div className="mt-6">
+                  <Segmented
+                    options={[{ value: "login", label: "Kycu" }, { value: "register", label: "Regjistrohu" }]}
+                    value={mode} onChange={(m) => switchMode(m as Mode)}
+                  />
+                </div>
+              )}
 
               {/* ── LOGIN ── */}
               {mode === "login" && (
@@ -267,10 +284,33 @@ export default function AuthPage() {
                   {err && <p className="text-[13px] text-bad font-semibold bg-bad-soft rounded-lg px-3.5 py-2.5">{err}</p>}
                   <Button type="submit" size="lg" className="w-full" loading={busy}>Kyçu</Button>
                   <div className="flex items-center justify-between text-[12.5px]">
-                    <button type="button" onClick={forgotPassword} className="font-semibold text-mute hover:text-primary-700 transition-colors">Keni harruar fjalëkalimin?</button>
+                    <button type="button" onClick={() => switchMode("forgot")} className="font-semibold text-mute hover:text-primary-700 transition-colors">Keni harruar fjalëkalimin?</button>
                     <button type="button" onClick={() => switchMode("register")} className="font-bold text-primary-700 hover:text-primary-800 transition-colors">Nuk keni llogari? Regjistrohuni</button>
                   </div>
                 </form>
+              )}
+
+              {/* ── FORGOT PASSWORD ── */}
+              {mode === "forgot" && (
+                forgotSent ? (
+                  <div className="card p-6 mt-5 text-center">
+                    <span className="w-11 h-11 rounded-xl bg-ok-soft text-ok flex items-center justify-center mx-auto"><IShield size={20} /></span>
+                    <p className="font-display font-bold text-ink mt-3.5">Kontrolloni email-in</p>
+                    <p className="text-[13px] text-mute mt-1.5 leading-relaxed">
+                      Nëse ekziston një llogari me adresën <b className="text-ink">{email}</b>, do të pranoni një link për të vendosur fjalëkalimin e ri. Linku skadon pas një kohe të shkurtër.
+                    </p>
+                    <Button className="w-full mt-5" onClick={() => { setForgotSent(false); switchMode("login"); }}>Kthehu te kyçja</Button>
+                  </div>
+                ) : (
+                  <form onSubmit={submitForgot} className="card p-6 mt-5 space-y-4">
+                    <Field label="Email" required>
+                      <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ju@email.com" autoComplete="email" />
+                    </Field>
+                    {err && <p className="text-[13px] text-bad font-semibold bg-bad-soft rounded-lg px-3.5 py-2.5">{err}</p>}
+                    <Button type="submit" size="lg" className="w-full" loading={busy}>Dërgo linkun e rikuperimit</Button>
+                    <button type="button" onClick={() => switchMode("login")} className="w-full text-center text-[12.5px] font-bold text-primary-700 hover:text-primary-800 transition-colors">← Kthehu te kyçja</button>
+                  </form>
+                )
               )}
 
               {/* ── ROLE SELECT ── */}
