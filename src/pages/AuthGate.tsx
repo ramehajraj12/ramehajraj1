@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../lib/app";
-import { useI18n } from "../lib/i18n";
+import { useI18n } from "../lib/lang";
 import { SUPABASE_CONFIGURED } from "../lib/supabase";
 import { AccountError } from "../lib/account";
 import { Button, Field, TextInput, PasswordInput, LogoMark, IShieldIc, Spinner, cls } from "../components/ui";

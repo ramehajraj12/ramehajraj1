@@ -1,4 +1,18 @@
-import { sb, SUPABASE_CONFIGURED, AVATAR_BUCKET, AVATAR_EXTS, AVATAR_MAX_MB, mapError } from "./supabase";
+import { sb, SUPABASE_CONFIGURED, AVATAR_BUCKET, AVATAR_EXTS, AVATAR_MAX_MB } from "./supabase";
+
+/** Map a raw auth/storage error message to a stable, localizable code. */
+function detectCode(msg: string): AccountErrorCode {
+  const m = msg.toLowerCase();
+  if (m.includes("invalid login credentials")) return "ERR_INVALID_CREDENTIALS";
+  if (m.includes("already registered") || m.includes("already been registered")) return "ERR_EXISTS";
+  if (m.includes("email not confirmed")) return "ERR_CONFIRM_EMAIL";
+  if (m.includes("rate limit")) return "ERR_RATE";
+  if (m.includes("row-level security") || m.includes("violates row-level")) return "ERR_NO_PERM";
+  if (m.includes("failed to fetch") || m.includes("network")) return "ERR_NETWORK";
+  if (m.includes("bucket not found")) return "ERR_BUCKET";
+  if (m.includes("weak") || m.includes("short")) return "ERR_PW_WEAK";
+  return "ERR_GENERIC";
+}
 
 export type Role = "client" | "consultant" | "admin" | "super_admin";
 
@@ -132,7 +146,7 @@ class SupabaseAccount implements AccountStore {
 
   async signIn(email: string, password: string): Promise<Profile> {
     const { data, error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) throw new AccountError(mapError(error.message, "ERR_GENERIC") as AccountErrorCode);
+    if (error) throw new AccountError(detectCode(error.message));
     return this.ensureProfile(data.user.id, data.user.email ?? "", String(data.user.user_metadata?.full_name ?? ""));
   }
 
@@ -142,8 +156,7 @@ class SupabaseAccount implements AccountStore {
       options: { data: { full_name: fullName } }, // role is NEVER sent — the DB trigger provisions 'client'
     });
     if (error) {
-      const code = mapError(error.message, "ERR_GENERIC");
-      throw new AccountError(code === "ERR_EXISTS" ? "ERR_EXISTS" : (code as AccountErrorCode));
+      throw new AccountError(detectCode(error.message));
     }
     const u = data.session?.user;
     if (!u) return { profile: null, needsConfirmation: true };
@@ -167,7 +180,7 @@ class SupabaseAccount implements AccountStore {
     if (patch.phone !== undefined) clean.phone = patch.phone;
     if (patch.preferred_language !== undefined) clean.preferred_language = patch.preferred_language;
     const { error } = await this.client.from("profiles").update(clean).eq("id", uid);
-    if (error) throw new AccountError(mapError(error.message, "ERR_GENERIC") as AccountErrorCode);
+    if (error) throw new AccountError(detectCode(error.message));
     const profile = await this.ensureProfile(uid, "", "");
     return { ...profile, ...patch } as Profile;
   }
@@ -186,11 +199,11 @@ class SupabaseAccount implements AccountStore {
       .catch(() => undefined);
     const { error: upErr } = await this.client.storage.from(AVATAR_BUCKET)
       .upload(this.avatarPath(uid, ext), file, { upsert: true, contentType: file.type });
-    if (upErr) throw new AccountError(mapError(upErr.message, "ERR_STORAGE") as AccountErrorCode);
+    if (upErr) throw new AccountError(detectCode(upErr.message));
     const { data: pub } = this.client.storage.from(AVATAR_BUCKET).getPublicUrl(this.avatarPath(uid, ext));
     const url = `${pub.publicUrl}?t=${Date.now()}`;
     const { error: profErr } = await this.client.from("profiles").update({ avatar_url: url }).eq("id", uid);
-    if (profErr) throw new AccountError(mapError(profErr.message, "ERR_GENERIC") as AccountErrorCode);
+    if (profErr) throw new AccountError(detectCode(profErr.message));
     const profile = await this.ensureProfile(uid, "", "");
     return { ...profile, avatar_url: url };
   }
@@ -202,7 +215,7 @@ class SupabaseAccount implements AccountStore {
       .remove(AVATAR_EXTS.map((e) => this.avatarPath(uid, e)))
       .catch(() => undefined);
     const { error } = await this.client.from("profiles").update({ avatar_url: null }).eq("id", uid);
-    if (error) throw new AccountError(mapError(error.message, "ERR_GENERIC") as AccountErrorCode);
+    if (error) throw new AccountError(detectCode(error.message));
     const profile = await this.ensureProfile(uid, "", "");
     return { ...profile, avatar_url: null };
   }
@@ -216,7 +229,7 @@ class SupabaseAccount implements AccountStore {
     const { error } = await this.client.auth.updateUser({ password: next });
     if (error) {
       const m = error.message.toLowerCase();
-      throw new AccountError(m.includes("weak") || m.includes("short") ? "ERR_PW_WEAK" : (mapError(error.message, "ERR_GENERIC") as AccountErrorCode));
+      throw new AccountError(m.includes("weak") || m.includes("short") ? "ERR_PW_WEAK" : detectCode(error.message));
     }
   }
 

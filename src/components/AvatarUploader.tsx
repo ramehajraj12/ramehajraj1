@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { useApp } from "../lib/app";
-import { useI18n } from "../lib/i18n";
+import { useI18n } from "../lib/lang";
 import { AVATAR_EXTS, AVATAR_MAX_MB } from "../lib/supabase";
 import { AccountError } from "../lib/account";
 import { Avatar, Button, Modal, Spinner, ICameraIc, ITrashIc } from "./ui";

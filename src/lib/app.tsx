@@ -3,7 +3,7 @@ import {
   createAccountStore, AccountError,
   type AccountStore, type Profile, type PersonalPatch, type AccountErrorCode,
 } from "./account";
-import { useI18n, readStoredLang, I18nProvider, type Lang, type DictKey } from "./i18n";
+import { useI18n, readStoredLang, I18nProvider, type Lang, type DictKey } from "./lang";
 
 export type ToastTone = "ok" | "bad" | "info";
 export interface Toast { id: number; tone: ToastTone; message: string; }
@@ -53,6 +53,11 @@ function InnerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true;
+    let settled = false;
+    const finish = () => { if (alive && !settled) { settled = true; setReady(true); } };
+    // Guarantees a first paint even if Supabase is slow, paused, or a stale
+    // token refresh hangs — the auth screen must never be blocked by network.
+    const guard = window.setTimeout(finish, 3500);
     store.getSession()
       .then((p) => {
         if (!alive) return;
@@ -60,13 +65,13 @@ function InnerProvider({ children }: { children: React.ReactNode }) {
         if (p) setLang(p.preferred_language === "en" ? "en" : "sq");
       })
       .catch((e) => console.error("session restore failed", e))
-      .finally(() => { if (alive) setReady(true); });
+      .finally(() => { window.clearTimeout(guard); finish(); });
     const off = store.onAuthChange((p) => {
       if (!alive) return;
       setProfile(p);
       if (p) setLang(p.preferred_language === "en" ? "en" : "sq");
     });
-    return () => { alive = false; off(); };
+    return () => { alive = false; window.clearTimeout(guard); off(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store]);
 

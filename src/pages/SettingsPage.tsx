@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../lib/app";
-import { useI18n, type Lang, type DictKey } from "../lib/i18n";
+import { useI18n, type Lang, type DictKey } from "../lib/lang";
 import { AccountError } from "../lib/account";
 import { AvatarUploader } from "../components/AvatarUploader";
 import {

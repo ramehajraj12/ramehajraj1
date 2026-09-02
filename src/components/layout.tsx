@@ -293,7 +293,8 @@ export function PortalShell({ nav, title, children }: { nav: NavItem[]; title: s
   useEffect(() => setMobileNav(false), [loc.pathname]);
   if (!user) return null;
 
-  const profileRoute = user.role === "admin" || user.role === "super_admin" ? "/admin/cilesimet" : user.role === "consultant" ? "/consultant/profili" : "/client/profili";
+  // shared account settings (own data only); global platform settings stay under /admin/cilesimet
+  const profileRoute = "/settings";
   const portalHome = user.role === "admin" || user.role === "super_admin" ? "/admin" : user.role === "consultant" ? "/consultant" : "/client";
   const current = [...nav].sort((a, b) => b.to.length - a.to.length).find((n) => loc.pathname === n.to || loc.pathname.startsWith(n.to + "/"))?.label;
 
@@ -379,7 +380,7 @@ export function PortalShell({ nav, title, children }: { nav: NavItem[]; title: s
               items={[
                 { label: "Faqja kryesore", icon: <IGrid size={15} />, onClick: () => nav2("/") },
                 { label: t("nav.portal"), icon: <IUser size={15} />, onClick: () => nav2(portalHome) },
-                { label: user.role === "admin" || user.role === "super_admin" ? "Cilësimet" : "Profili", icon: <ISettings size={15} />, onClick: () => nav2(profileRoute) },
+                { label: "Cilësimet", icon: <ISettings size={15} />, onClick: () => nav2(profileRoute) },
                 { sep: true },
                 { label: t("portal.logout"), icon: <ILogout size={15} />, danger: true, onClick: () => { logout(); nav2("/"); } },
               ]}

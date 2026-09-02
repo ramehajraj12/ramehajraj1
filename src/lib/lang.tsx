@@ -1,5 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
+/**
+ * Self-contained SQ/EN language layer for the account-settings stack.
+ * The platform-wide dictionary lives in ./i18n (untouched).
+ */
 export type Lang = "sq" | "en";
 
 const dict = {
@@ -38,6 +42,9 @@ const dict = {
     "auth.err.pwShort": "Fjalëkalimi duhet të ketë të paktën 8 karaktere.",
     "auth.loggingIn": "Duke u kyçur…",
     "auth.creating": "Duke krijuar…",
+    "auth.confirmTitle": "Verifikoni email-in",
+    "auth.confirmBody": "Llogaria u krijua. Hapni linkun e verifikimit në email dhe pastaj kyçuni.",
+    "auth.backToLogin": "Kthehu te kyçja",
 
     // ── shell ──
     "shell.settings": "Cilësimet",
@@ -107,7 +114,7 @@ const dict = {
 
     // ── security ──
     "sec.title": "Siguria",
-    "sec.sub": "Mbroni llogarinë me një fjalëkalim të fortë.",
+    "sec.sub": "Mbroni llogarinë tuaj me një fjalëkalim të fortë.",
     "sec.changePw": "Ndrysho fjalëkalimin",
     "sec.current": "Fjalëkalimi aktual",
     "sec.new": "Fjalëkalimi i ri",
@@ -119,44 +126,43 @@ const dict = {
     "sec.errCurrent": "Fjalëkalimi aktual është i detyrueshëm.",
     "sec.errShort": "Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere.",
     "sec.errMismatch": "Fjalëkalimet e reja nuk përputhen.",
-    "sec.errWrongCurrent": "Fjalëkalimi aktual nuk është i saktë.",
-    "sec.strength": "Fortësia",
+    "sec.errWrongCurrent": "Fjalëkalimi aktual është i pasaktë.",
+    "sec.strength": "Fuqia",
     "sec.strength.0": "Shumë i dobët",
     "sec.strength.1": "I dobët",
     "sec.strength.2": "Mesatar",
     "sec.strength.3": "I fortë",
     "sec.strength.4": "Shumë i fortë",
 
-    // ── platform (admin only) ──
+    // ── platform (admin-only, read-only) ──
     "plat.title": "Cilësimet e platformës",
-    "plat.sub": "Rregullat globale të platformës — lexim vetëm këtu.",
-    "plat.lock": "Këto vlera menaxhohen nga Administratorët në konsolën e admin-it. Ndryshimet nga cilësimet e llogarisë nuk prekin platformën.",
+    "plat.sub": "Rregullat globale të platformës — vetëm për lexim këtu.",
+    "plat.lock": "Këto vlera menaxhohen nga Administratorët në konsolën admin. Cilësimet e llogarisë nuk e prekjnë kurrë platformën.",
     "plat.booking": "Rregullat e rezervimit",
     "plat.minCancel": "Anulimi minimal (orë)",
     "plat.minReschedule": "Rizhvendosja minimale (orë)",
-    "plat.buffer": "Pauza mes termineve (min)",
+    "plat.buffer": "Buffer mes termineve (min)",
     "plat.horizon": "Horizonti i rezervimit (ditë)",
     "plat.finance": "Financat",
-    "plat.tax": "Norma e tatimit (%)",
+    "plat.tax": "Norma e taksës (%)",
     "plat.commission": "Komisioni standard (%)",
-    "plat.unavailable": "Cilësimet globale nuk janë të disponueshme për momentin.",
+    "plat.unavailable": "Cilësimet globale nuk janë të disponueshme tani.",
 
-    // ── common ──
-    "common.error": "Diçka shkoi keq. Ju lutem provoni përsëri.",
+    "common.error": "Diçka shkoi keq. Provoni përsëri.",
     "common.noPerm": "Nuk keni të drejtë për këtë veprim.",
     "common.retry": "Provo përsëri",
-    "common.loading": "Duke ngarkuar…",
+    "common.loading": "Duke u ngarkuar…",
   },
   en: {
     "brand.name": "StatLab",
     "brand.tag": "SPSS Consulting",
 
     "auth.kicker": "Platform portal",
-    "auth.title": "Your account settings, in one place.",
+    "auth.title": "Account settings, in one place.",
     "auth.sub": "Profile, photo, language and security — protected by database-level authorization.",
     "auth.trust1": "RLS on every table",
     "auth.trust2": "Private storage",
-    "auth.trust3": "Only your own data",
+    "auth.trust3": "Only your data",
     "auth.signIn": "Sign in",
     "auth.signUp": "Sign up",
     "auth.loginTitle": "Sign in to StatLab",
@@ -177,10 +183,13 @@ const dict = {
     "auth.err.confirmEmail": "Account created — please verify your email before signing in.",
     "auth.err.mismatch": "Passwords do not match.",
     "auth.err.name": "Full name is required.",
-    "auth.err.email": "The email is not valid.",
-    "auth.err.pwShort": "The password must be at least 8 characters.",
+    "auth.err.email": "Email is not valid.",
+    "auth.err.pwShort": "Password must be at least 8 characters.",
     "auth.loggingIn": "Signing in…",
     "auth.creating": "Creating…",
+    "auth.confirmTitle": "Verify your email",
+    "auth.confirmBody": "Your account was created. Open the verification link in your email, then sign in.",
+    "auth.backToLogin": "Back to sign in",
 
     "shell.settings": "Settings",
     "shell.signOut": "Sign out",
@@ -188,7 +197,7 @@ const dict = {
     "shell.home": "Home",
 
     "set.title": "Account Settings",
-    "set.sub": "Manage your profile, language and security.",
+    "set.sub": "Manage your profile, language and account security.",
     "set.nav.profile": "Profile",
     "set.nav.account": "Account",
     "set.nav.language": "Language",
@@ -196,26 +205,26 @@ const dict = {
     "set.nav.platform": "Platform",
 
     "prof.title": "Profile",
-    "prof.sub": "How you appear to the platform's team and consultants.",
+    "prof.sub": "How you appear to the team and platform consultants.",
     "prof.photo": "Profile photo",
     "prof.photoHint": "JPG, PNG or WEBP. Maximum 5 MB.",
-    "prof.changePhoto": "Change photo",
-    "prof.removePhoto": "Remove photo",
+    "prof.changePhoto": "Change Photo",
+    "prof.removePhoto": "Remove Photo",
     "prof.uploading": "Uploading…",
     "prof.removing": "Removing…",
     "prof.photoOk": "Photo updated.",
     "prof.photoRemoved": "Photo removed.",
     "prof.photoErrType": "Unsupported format. Use JPG, PNG or WEBP.",
-    "prof.photoErrSize": "The file exceeds 5 MB.",
+    "prof.photoErrSize": "File exceeds 5 MB.",
     "prof.removeTitle": "Remove photo?",
     "prof.removeBody": "The photo will be deleted from storage and your profile will fall back to initials. This cannot be undone.",
     "prof.cancel": "Cancel",
     "prof.remove": "Yes, remove",
-    "prof.personal": "Personal information",
+    "prof.personal": "Personal Information",
     "prof.fullName": "Full name",
     "prof.phone": "Phone",
     "prof.phoneHint": "Optional — used for appointment notifications.",
-    "prof.save": "Save changes",
+    "prof.save": "Save Changes",
     "prof.saving": "Saving…",
     "prof.saved": "Profile saved.",
     "prof.errName": "Name cannot be empty.",
@@ -286,13 +295,13 @@ const dict = {
 
 export type DictKey = keyof (typeof dict)["sq"];
 
-const I18nCtx = createContext<{ lang: Lang; t: (k: DictKey) => string; setLang: (l: Lang) => void }>({
+const LangCtx = createContext<{ lang: Lang; t: (k: DictKey) => string; setLang: (l: Lang) => void }>({
   lang: "sq",
   t: (k) => dict.sq[k] ?? k,
   setLang: () => undefined,
 });
 
-export function I18nProvider({ initial, children, onPersist }: {
+export function LangProvider({ initial, children, onPersist }: {
   initial: Lang;
   children: React.ReactNode;
   onPersist?: (l: Lang) => void;
@@ -308,12 +317,15 @@ export function I18nProvider({ initial, children, onPersist }: {
   }, [onPersist]);
   const t = useCallback((k: DictKey) => dict[lang][k] ?? dict.sq[k] ?? k, [lang]);
   const value = useMemo(() => ({ lang, t, setLang }), [lang, t, setLang]);
-  return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;
+  return <LangCtx.Provider value={value}>{children}</LangCtx.Provider>;
 }
 
-export function useI18n() {
-  return useContext(I18nCtx);
+export function useLang() {
+  return useContext(LangCtx);
 }
+
+// compatibility aliases for the settings stack modules
+export { LangProvider as I18nProvider, useLang as useI18n };
 
 export function readStoredLang(): Lang {
   try {
