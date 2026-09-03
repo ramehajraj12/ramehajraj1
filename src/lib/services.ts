@@ -1068,11 +1068,48 @@ export interface ApplicationRow extends ApplicationPayload {
   created_at: string;
 }
 
-/** Public/anonymous submission (keeps applicant_id null). */
+/**
+ * Public submission. If the visitor is signed in, the application is linked to
+ * their profile (applicant_id); anonymous submissions keep applicant_id null.
+ */
 export async function submitApplication(app: ApplicationPayload): Promise<void> {
-  const { error } = await sb.from("consultant_applications").insert({ ...app, applicant_id: null, status: "submitted" });
+  const applicant_id = (await currentUserId()) ?? null;
+  const { error } = await sb.from("consultant_applications").insert({ ...app, applicant_id, status: "submitted" });
   if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "application.submitted", p_entity_type: "consultant_application", p_metadata: app.name }).catch(() => undefined);
   emit();
+}
+
+async function currentUserId(): Promise<string | null> {
+  const { data } = await sb.auth.getSession();
+  return data.session?.user?.id ?? null;
+}
+
+// ── CV upload for consultant applications ───────────────────────────────────
+const CV_EXTS = ["pdf", "doc", "docx", "png", "jpg", "jpeg", "webp"];
+const CV_MAX_MB = 10;
+
+/**
+ * Upload a CV to the private `cv` bucket under a random folder and return the
+ * stored object path (saved into consultant_applications.cv_file).
+ */
+export async function uploadApplicationCv(file: File): Promise<string> {
+  const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+  if (!CV_EXTS.includes(ext)) throw new QueryError("Format i palejuar për CV. Përdorni PDF, DOC, DOCX ose imazh.");
+  if (file.size > CV_MAX_MB * 1024 * 1024) throw new QueryError(`CV-ja tejkalon ${CV_MAX_MB} MB.`);
+  const folder = uid("");
+  const path = `${folder}/cv.${ext}`;
+  const { error } = await sb.storage.from("cv").upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw new QueryError("Ngarkimi i CV-së dështoi. Provoni përsëri.");
+  return path;
+}
+
+/** Staff-only: a short-lived signed URL to preview/download an applicant CV. */
+export async function getApplicationCvUrl(path: string): Promise<string> {
+  if (!path) throw new QueryError("Ky aplikim nuk ka CV të ngarkuar.");
+  const { data, error } = await sb.storage.from("cv").createSignedUrl(path, 600);
+  if (error || !data?.signedUrl) throw new QueryError("CV-ja nuk u gjet ose s'keni të drejtë ta hapni.");
+  return data.signedUrl;
 }
 
 /**
