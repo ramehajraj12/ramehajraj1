@@ -1068,11 +1068,48 @@ export interface ApplicationRow extends ApplicationPayload {
   created_at: string;
 }
 
-/** Public/anonymous submission (keeps applicant_id null). */
+/**
+ * Public submission. If the visitor is signed in, the application is linked to
+ * their profile (applicant_id); anonymous submissions keep applicant_id null.
+ */
 export async function submitApplication(app: ApplicationPayload): Promise<void> {
-  const { error } = await sb.from("consultant_applications").insert({ ...app, applicant_id: null, status: "submitted" });
+  const applicant_id = (await currentUserId()) ?? null;
+  const { error } = await sb.from("consultant_applications").insert({ ...app, applicant_id, status: "submitted" });
   if (error) throw new QueryError(mapError(error.message));
+  await rpc("log_activity", { p_action: "application.submitted", p_entity_type: "consultant_application", p_metadata: app.name }).catch(() => undefined);
   emit();
+}
+
+async function currentUserId(): Promise<string | null> {
+  const { data } = await sb.auth.getSession();
+  return data.session?.user?.id ?? null;
+}
+
+// ── CV upload for consultant applications ───────────────────────────────────
+const CV_EXTS = ["pdf", "doc", "docx", "png", "jpg", "jpeg", "webp"];
+const CV_MAX_MB = 10;
+
+/**
+ * Upload a CV to the private `cv` bucket under a random folder and return the
+ * stored object path (saved into consultant_applications.cv_file).
+ */
+export async function uploadApplicationCv(file: File): Promise<string> {
+  const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+  if (!CV_EXTS.includes(ext)) throw new QueryError("Format i palejuar për CV. Përdorni PDF, DOC, DOCX ose imazh.");
+  if (file.size > CV_MAX_MB * 1024 * 1024) throw new QueryError(`CV-ja tejkalon ${CV_MAX_MB} MB.`);
+  const folder = uid("");
+  const path = `${folder}/cv.${ext}`;
+  const { error } = await sb.storage.from("cv").upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw new QueryError("Ngarkimi i CV-së dështoi. Provoni përsëri.");
+  return path;
+}
+
+/** Staff-only: a short-lived signed URL to preview/download an applicant CV. */
+export async function getApplicationCvUrl(path: string): Promise<string> {
+  if (!path) throw new QueryError("Ky aplikim nuk ka CV të ngarkuar.");
+  const { data, error } = await sb.storage.from("cv").createSignedUrl(path, 600);
+  if (error || !data?.signedUrl) throw new QueryError("CV-ja nuk u gjet ose s'keni të drejtë ta hapni.");
+  return data.signedUrl;
 }
 
 /**
@@ -1391,6 +1428,52 @@ export async function toggleGoogleCalendar(session: Session | null): Promise<boo
   if (error) throw new QueryError(mapError(error.message));
   emit();
   return next;
+}
+
+// ── Google Calendar / Meet (real OAuth via the `google` Edge Function) ──────
+// Tokens never reach the browser — the Edge Function holds them server-side.
+async function googleEdge(action: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const { data, error } = await sb.functions.invoke("google", { body: { action, ...body } });
+  if (error) throw new QueryError("Integrimi Google nuk u arrit. Kontrolloni konfigurimin.");
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (d.error) throw new QueryError(String(d.error));
+  return d;
+}
+
+/** { connected, email } for the calling consultant (tokens stay hidden). */
+export async function googleConnectionStatus(session: Session | null): Promise<{ connected: boolean; email: string | null }> {
+  requireSession(session);
+  const r = await rpc<{ connected: boolean; email: string | null } | null>("google_connection_status");
+  return r ?? { connected: false, email: null };
+}
+
+/** Returns the Google OAuth consent URL; caller redirects the browser to it. */
+export async function googleAuthUrl(session: Session | null): Promise<string> {
+  requireSession(session);
+  const d = await googleEdge("auth_url");
+  return String(d.url ?? "");
+}
+
+/** Revoke + remove the stored Google tokens for the calling consultant. */
+export async function googleDisconnect(session: Session | null): Promise<void> {
+  requireSession(session);
+  await googleEdge("disconnect");
+  emit();
+}
+
+/** Busy periods from the consultant's own Google Calendar (ISO timeMin/timeMax). */
+export async function googleFreeBusy(session: Session | null, start: string, end: string): Promise<{ start: string; end: string }[]> {
+  requireSession(session);
+  const d = await googleEdge("freebusy", { start, end });
+  return (d.busy as { start: string; end: string }[]) ?? [];
+}
+
+/** Create/update/delete the calendar event + Meet link for an appointment. */
+export async function googleSyncEvent(session: Session | null, appointmentId: string, action: "create" | "update" | "delete"): Promise<{ meeting_url?: string | null }> {
+  requireSession(session);
+  const d = await googleEdge("sync_event", { appointment_id: appointmentId, action });
+  emit();
+  return { meeting_url: (d.meeting_url as string | null) ?? null };
 }
 
 export async function saveServiceAdmin(session: Session | null, data: Partial<Record<string, unknown>> & { id?: string; name: string }): Promise<void> {
