@@ -1393,6 +1393,52 @@ export async function toggleGoogleCalendar(session: Session | null): Promise<boo
   return next;
 }
 
+// ── Google Calendar / Meet (real OAuth via the `google` Edge Function) ──────
+// Tokens never reach the browser — the Edge Function holds them server-side.
+async function googleEdge(action: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const { data, error } = await sb.functions.invoke("google", { body: { action, ...body } });
+  if (error) throw new QueryError("Integrimi Google nuk u arrit. Kontrolloni konfigurimin.");
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (d.error) throw new QueryError(String(d.error));
+  return d;
+}
+
+/** { connected, email } for the calling consultant (tokens stay hidden). */
+export async function googleConnectionStatus(session: Session | null): Promise<{ connected: boolean; email: string | null }> {
+  requireSession(session);
+  const r = await rpc<{ connected: boolean; email: string | null } | null>("google_connection_status");
+  return r ?? { connected: false, email: null };
+}
+
+/** Returns the Google OAuth consent URL; caller redirects the browser to it. */
+export async function googleAuthUrl(session: Session | null): Promise<string> {
+  requireSession(session);
+  const d = await googleEdge("auth_url");
+  return String(d.url ?? "");
+}
+
+/** Revoke + remove the stored Google tokens for the calling consultant. */
+export async function googleDisconnect(session: Session | null): Promise<void> {
+  requireSession(session);
+  await googleEdge("disconnect");
+  emit();
+}
+
+/** Busy periods from the consultant's own Google Calendar (ISO timeMin/timeMax). */
+export async function googleFreeBusy(session: Session | null, start: string, end: string): Promise<{ start: string; end: string }[]> {
+  requireSession(session);
+  const d = await googleEdge("freebusy", { start, end });
+  return (d.busy as { start: string; end: string }[]) ?? [];
+}
+
+/** Create/update/delete the calendar event + Meet link for an appointment. */
+export async function googleSyncEvent(session: Session | null, appointmentId: string, action: "create" | "update" | "delete"): Promise<{ meeting_url?: string | null }> {
+  requireSession(session);
+  const d = await googleEdge("sync_event", { appointment_id: appointmentId, action });
+  emit();
+  return { meeting_url: (d.meeting_url as string | null) ?? null };
+}
+
 export async function saveServiceAdmin(session: Session | null, data: Partial<Record<string, unknown>> & { id?: string; name: string }): Promise<void> {
   requireAdmin(session);
   const { id, name, ...rest } = data as Record<string, unknown> & { id?: string; name: string };

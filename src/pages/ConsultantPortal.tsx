@@ -8,8 +8,9 @@ import {
   updateProjectStatus,
   consultantClients, listFiles, uploadFile, downloadFile, deleteFile,
   listPayments, listReviews, getConsultantById, saveConsultantSelf, saveWeeklyAvailability,
-  addBlock, removeBlock, toggleGoogleCalendar, listActiveServices,
+  addBlock, removeBlock, listActiveServices,
   getMyAvailability, myConsultantId,
+  googleConnectionStatus, googleAuthUrl, googleDisconnect, googleSyncEvent,
   type AppointmentRow,
 } from "../lib/services";
 import {
@@ -134,6 +135,15 @@ export function AppointmentDrawer({ appt, onClose, onChanged, showClientInfo = t
     ? cancelByConsultant(session, appt.id, "Anuluar nga konsulenti")
     : cancelAppointmentByStaff(session, appt.id, "Anuluar nga stafi");
 
+  // Confirm, then best-effort push a real Google Calendar event + Meet link when connected.
+  const doConfirm = async () => {
+    await confirmAppointment(session, appt.id);
+    try {
+      const st = await googleConnectionStatus(session);
+      if (st.connected) await googleSyncEvent(session, appt.id, "create");
+    } catch { /* calendar sync is best-effort; the booking itself succeeded */ }
+  };
+
   const act = async (fn: () => Promise<unknown>, msg: string) => {
     setConfirming(true);
     try { await fn(); toast(msg); onChanged?.(); onClose(); } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setConfirming(false); }
@@ -198,7 +208,7 @@ export function AppointmentDrawer({ appt, onClose, onChanged, showClientInfo = t
           {isStaff && ["pending", "confirmed"].includes(appt.status) && (
             <div className="grid grid-cols-2 gap-2.5">
               {appt.status === "pending" && (
-                <Button loading={confirming} onClick={() => act(() => confirmAppointment(session, appt.id), "Termini u konfirmua. Linku Meet u dërgua.")}><ICheck size={14} /> Konfirmo</Button>
+                <Button loading={confirming} onClick={() => act(() => doConfirm(), "Termini u konfirmua.")}><ICheck size={14} /> Konfirmo</Button>
               )}
               <Button variant="outline" onClick={() => setReschedOpen(true)}><ICal size={14} /> Rizhvendos</Button>
               <Button variant="outline" onClick={() => act(() => markNoShow(session, appt.id), "U shënua mungesa.")}>Nuk u paraqit</Button>
@@ -740,6 +750,8 @@ export function ConsultantAvailability() {
   const [windows, setWindows] = useState<{ day: number; start: string; end: string }[] | null>(null);
   const [blocks, setBlocks] = useState<{ id: string; date: string; end_date: string | null; start_time: string | null; end_time: string | null; reason: string; type: string }[] | null>(null);
   const [google, setGoogle] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
   const [nb, setNb] = useState({ date: todayISO(), end_date: "", start_time: "", end_time: "", reason: "", type: "meeting" });
@@ -749,9 +761,34 @@ export function ConsultantAvailability() {
     if (!data) return null;
     setWindows(data.windows.sort((a, b) => a.day - b.day));
     setBlocks(data.blocks);
-    setGoogle(data.google);
     return data;
   }, [session?.user_id]);
+
+  // real Google connection status (connected + account email; tokens stay server-side)
+  useAsync(async () => {
+    const st = await googleConnectionStatus(session);
+    setGoogle(st.connected);
+    setGoogleEmail(st.email);
+    return st;
+  }, [session?.user_id]);
+
+  const connectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      const url = await googleAuthUrl(session);
+      if (url) window.location.href = url; // full redirect to Google consent
+      else toast("Nuk u mor URL e autorizimit.", "bad");
+    } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setGoogleBusy(false); }
+  };
+
+  const disconnectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      await googleDisconnect(session);
+      setGoogle(false); setGoogleEmail(null);
+      toast("Google Calendar u shkëput.");
+    } catch (e) { toast(e instanceof Error ? e.message : "Gabim.", "bad"); } finally { setGoogleBusy(false); }
+  };
 
   const myId = async () => myConsultantId(session);
 
@@ -816,16 +853,29 @@ export function ConsultantAvailability() {
 
         <div className="space-y-5">
           <Card className="p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="w-10 h-10 rounded-lg bg-paper border border-line flex items-center justify-center"><IGoogle size={18} /></span>
                 <div>
-                  <p className="font-display font-bold text-ink text-[14.5px]">Google Calendar</p>
-                  <p className="text-[12px] text-mute">{google ? "I lidhur — ngjarjet busy bllokojnë terminet automatikisht." : "Lidhni kalendarin tuaj personal."}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-display font-bold text-ink text-[14.5px]">Google Calendar</p>
+                    <span className={cls("w-1.5 h-1.5 rounded-full", google ? "bg-ok" : "bg-line-2")} aria-hidden="true" />
+                  </div>
+                  <p className="text-[12px] text-mute">
+                    {google
+                      ? (googleEmail ? `I lidhur si ${googleEmail}` : "I lidhur")
+                      : "Lidhni kalendarin tuaj personal."}
+                  </p>
                 </div>
               </div>
-              <Toggle checked={google} onChange={async () => { const v = await toggleGoogleCalendar(session); setGoogle(v); toast(v ? "Google Calendar u lidh." : "Google Calendar u shkëput."); }} />
+              {google
+                ? <Button size="sm" variant="outline" loading={googleBusy} onClick={disconnectGoogle}>Shkëput</Button>
+                : <Button size="sm" loading={googleBusy} onClick={connectGoogle}><IGoogle size={14} /> Lidh</Button>}
             </div>
+            <p className="text-[11.5px] text-mute mt-3 pt-3 border-t border-line leading-relaxed">
+              Orët e zëna në kalendarin tuaj bllokojnë terminet automatikisht dhe çdo konsultë e konfirmuar
+              krijohet si ngjarje me link Google Meet.
+            </p>
           </Card>
           <Card className="p-5">
             <h2 className="font-display font-bold text-ink mb-3.5">Periudhat e bllokuara</h2>
