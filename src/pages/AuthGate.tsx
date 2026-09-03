@@ -152,8 +152,9 @@ export default function AuthGate() {
     <div className="min-h-screen grid lg:grid-cols-[1fr_1fr] bg-paper">
       <BrandPanel />
 
-      <div className="flex items-center justify-center p-6 sm:p-10 bg-ambient bg-graph">
-        <div className="w-full max-w-[400px] anim-fade-up">
+      <div className="relative flex items-center justify-center p-6 sm:p-10 bg-ambient bg-graph overflow-hidden">
+        <div className="absolute inset-0 bg-noise opacity-[0.05] pointer-events-none" aria-hidden="true" />
+        <div className="relative w-full max-w-[400px] anim-fade-up">
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
             <LogoMark size={32} />
             <div>
